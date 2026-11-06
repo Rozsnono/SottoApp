@@ -1,11 +1,11 @@
 /** Beszélgetés: üzenetlista (fordított), rejtett/zárt média, olvasás-jelzés, üzenet-menü, jelentés, szerkesztő. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, Modal, Pressable, View } from "react-native";
+import { FlatList, Modal, Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHorizontal, Palette, Reply, ShieldAlert, Trash2, Mail, X } from "lucide-react-native";
+import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHorizontal, Palette, Reply, RotateCw, ShieldAlert, Trash2, Mail, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/components/ui";
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
@@ -18,6 +18,7 @@ import { radius, size, space, useTheme } from "@/theme";
 import { CHAT_THEMES, themeByKey } from "@/theme/chatThemes";
 import { currentTheme, isThemeEvent, isVisible, reactionMap, REACTION_EMOJIS } from "@/lib/events";
 import { toast } from "@/state/toast";
+import { confirmDialog, showDialog } from "@/state/dialog";
 
 const EMPTY: Msg[] = [];
 type Reason = (typeof REPORT_REASONS)[number];
@@ -103,7 +104,7 @@ export default function ChatScreen() {
     if (key !== theme.key) sendEvent(id, { kind: "theme", theme: key }).catch((e) => fail(e));
   };
 
-  const doDelete = (m: Msg) => Alert.alert(t("chat.deleteForAll"), t("chat.deleteConfirm"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("common.delete"), style: "destructive", onPress: () => void deleteForAll(m).catch(fail) }]);
+  const doDelete = (m: Msg) => confirmDialog({ title: t("chat.deleteForAll"), message: t("chat.deleteConfirm"), icon: Trash2, confirmLabel: t("common.delete"), destructive: true, onConfirm: () => void deleteForAll(m).catch(fail) });
 
   const submitReport = async () => {
     if (!reporting) return;
@@ -143,7 +144,7 @@ export default function ChatScreen() {
         ) : (
           <MessageBubble m={item} tint={tint(prefs[conv.other.id]?.color as never)} outColor={theme.out} reactions={reactions[item.id]} showReactButton={!item.mine && item.id === lastMsgId} replyName={item.payload?.reply ? nameOf(item.payload.reply.senderId) : undefined} onReactPress={setReactPick} onReply={startReply} onQuotePress={scrollToMsg} showReceipt={item.id === lastMineId} onLongPress={setMenu}
             onOpenMedia={(m) => router.push({ pathname: "/viewer", params: { convId: id, id: m.id } })}
-            onRetry={(m) => Alert.alert(t("chat.failed"), undefined, [{ text: t("chat.retry"), onPress: () => void retrySend(id, m.id) }, { text: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { text: t("common.cancel"), style: "cancel" }])} />
+            onRetry={(m) => showDialog({ title: t("chat.failed"), icon: RotateCw, actions: [{ label: t("common.cancel"), style: "cancel" }, { label: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { label: t("chat.retry"), onPress: () => void retrySend(id, m.id) }] })} />
         )} />
       {conv.archived || !conv.available ? (
         <View style={{ padding: space[3] }}><Banner icon={Lock} tone="neutral" text={t("chat.archived")} /></View>

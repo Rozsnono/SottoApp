@@ -3,12 +3,12 @@
  * Bezárás: ×, koppintás (kép) vagy lefelé húzás. A megnyitás olvasási visszaigazolást küld.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, PanResponder, Pressable, View, Animated } from "react-native";
+import { ActivityIndicator, PanResponder, Pressable, View, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { Asset, requestPermissionsAsync } from "expo-media-library";
-import { Download, RotateCw, X } from "lucide-react-native";
+import { Download, RotateCw, TriangleAlert, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { IconButton, T } from "@/components/ui";
 import { chat, markRead } from "@/state/chat";
@@ -16,6 +16,7 @@ import { downloadAndDecrypt, releaseTemp } from "@/services/media";
 import { useStore } from "@/lib/store";
 import { space } from "@/theme";
 import { toast } from "@/state/toast";
+import { confirmDialog } from "@/state/dialog";
 
 function VideoBox({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (p) => { p.play(); });
@@ -56,14 +57,14 @@ export default function Viewer() {
     onPanResponderRelease: (_, g) => { if (g.dy > 120 || g.vy > 1.2) router.back(); else Animated.spring(dy, { toValue: 0, useNativeDriver: false }).start(); },
   }), [dy]);
 
-  const save = () => Alert.alert(t("profile.download"), t("profile.downloadWarn"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("common.ok"), onPress: async () => {
+  const save = () => confirmDialog({ title: t("profile.download"), message: t("profile.downloadWarn"), icon: TriangleAlert, confirmLabel: t("common.ok"), onConfirm: async () => {
     try {
       const p = await requestPermissionsAsync(true);
       if (!p.granted || !uri) return;
       await Asset.create(uri);
       toast.success(t("profile.saved"));
     } catch (e) { console.warn("[viewer] mentés sikertelen", e instanceof Error ? e.message : e); toast.error(t("common.error")); }
-  } }]);
+  } });
 
   const bg = dy.interpolate({ inputRange: [0, 300], outputRange: [1, 0.3], extrapolate: "clamp" });
   return (

@@ -1,8 +1,8 @@
 /** Ismerős profilja: becenév, szín (csak nálam látszik, titkosítva szinkronizálva), közös média, biztonsági szám, némítás, törlés/tiltás. */
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ban, Bell, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, UserMinus } from "lucide-react-native";
+import { Ban, Bell, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, TriangleAlert, UserMinus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, ColorPicker, IconButton, Kav, ListItem, Monogram, Screen, T, TextField } from "@/components/ui";
 import { blockUser, chat, displayName, loadPrefs, removeFriend, savePrefs, isMuted, setMute, setVerified } from "@/state/chat";
@@ -11,6 +11,7 @@ import { safetyNumber } from "@/crypto/safety";
 import { useStore } from "@/lib/store";
 import { radius, size, space, useTheme } from "@/theme";
 import { toast } from "@/state/toast";
+import { confirmDialog } from "@/state/dialog";
 
 export default function Profile() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,7 +34,7 @@ export default function Profile() {
   const muted = isMuted(conv);
   const cur = prefs[other.id] ?? {};
   const nick = draft ?? cur.nickname ?? "";
-  const confirm = (title: string, body: string, fn: () => Promise<void>) => Alert.alert(title, body, [{ text: t("common.cancel"), style: "cancel" }, { text: t("common.confirm"), style: "destructive", onPress: () => void fn().then(() => router.dismissTo("/")).catch(fail) }]);
+  const confirm = (title: string, body: string, fn: () => Promise<void>) => confirmDialog({ title, message: body, icon: TriangleAlert, destructive: true, onConfirm: () => void fn().then(() => router.dismissTo("/")).catch(fail) });
 
   return (
     <Screen><Kav>

@@ -1,7 +1,7 @@
 /** Beállítások: ikon + rövid cím soronként; nincs magyarázó alcím. */
 import { useEffect, useState } from "react";
 import * as Application from "expo-application";
-import { Alert, ScrollView, Switch, View } from "react-native";
+import { ScrollView, Switch, View } from "react-native";
 import { router } from "expo-router";
 import { Bell, Fingerprint, Globe, LogOut, ScanFace, Smartphone, UserCog, UserX } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,7 @@ import { disablePush, registerPush } from "@/services/push";
 import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { size, space, useTheme } from "@/theme";
+import { confirmDialog } from "@/state/dialog";
 
 export default function Settings() {
   const { c } = useTheme();
@@ -35,7 +36,7 @@ export default function Settings() {
           right={<Switch accessibilityLabel={t("settings.biometric")} disabled={!lk.available} value={lk.enabled} onValueChange={(v) => void setLockEnabled(v)} />} />
         <ListItem label={t("settings.devices")} left={ic(Smartphone)} title={<T v="title">{t("settings.devices")}</T>} onPress={() => router.push("/settings/devices")} />
         <ListItem label={t("friends.blocked")} left={ic(UserX)} title={<T v="title">{t("friends.blocked")}</T>} onPress={() => router.push("/settings/blocked")} />
-        <ListItem label={t("auth.logout")} left={ic(LogOut)} title={<T v="title">{t("auth.logout")}</T>} onPress={() => Alert.alert(t("auth.logout"), t("recovery.warn"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("auth.logout"), style: "destructive", onPress: () => void logout() }])} />
+        <ListItem label={t("auth.logout")} left={ic(LogOut)} title={<T v="title">{t("auth.logout")}</T>} onPress={() => confirmDialog({ title: t("auth.logout"), icon: LogOut, confirmLabel: t("auth.logout"), destructive: true, onConfirm: () => void logout() })} />
         <T v="caption" muted style={{ textAlign: "center", paddingTop: space[4] }}>Sotto v{Application.nativeApplicationVersion ?? "?"} ({Application.nativeBuildVersion ?? "?"}){apiVersion ? ` · API v${apiVersion}` : ""}</T>
         <View style={{ height: space[8] }} />
       </ScrollView>

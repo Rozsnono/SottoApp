@@ -15,6 +15,7 @@ import { useStore } from "@/lib/store";
 import { useTheme } from "@/theme";
 import { LockScreen, RecoveryCodeScreen } from "@/components/Overlays";
 import { Toaster } from "@/components/Toaster";
+import { DialogHost } from "@/components/DialogHost";
 
 export default function RootLayout() {
   const { c, dark } = useTheme();
@@ -55,6 +56,7 @@ export default function RootLayout() {
           </Stack.Protected>
         </Stack>}
         <Toaster />
+        <DialogHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
