@@ -1,14 +1,21 @@
 {
   "expo": {
-    "name": "sotto-app",
+    "name": "Sotto",
     "slug": "sotto-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sottoapp",
+    "scheme": "sotto",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Sotto a biometrikus zároláshoz használja.",
+        "NSCameraUsageDescription": "Fotó és videó készítéséhez.",
+        "NSMicrophoneUsageDescription": "Videófelvételhez.",
+        "NSPhotoLibraryUsageDescription": "Kép küldéséhez."
+      },
+      "bundleIdentifier": "com.sotto.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,26 +24,61 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS"
+      ],
+      "package": "com.sotto.app",
+      "versionCode": 1
     },
     "web": {
-      "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Fotó és videó készítéséhez.",
+          "microphonePermission": "Videófelvételhez.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {}
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Biometrikus zároláshoz."
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FAF8F4",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 76,
+          "dark": {
+            "backgroundColor": "#0E1015"
+          }
         }
-      ]
+      ],
+      "./plugins/withReleaseSigning.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "apiUrl": "https://api.sotto.commandos.rozsnorbert.hu"
     }
   }
 }

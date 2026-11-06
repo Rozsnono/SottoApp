@@ -1,18 +1,60 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import "@/lib/polyfill"; // ELSŐ importként: véletlenszám-forrás az @noble/* könyvtáraknak
+import { useEffect, useState } from "react";
+import { View } from "react-native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { initI18n } from "@/i18n";
+import { loadSession, session } from "@/state/session";
+import { initLock, lock } from "@/state/lock";
+import { startEngine } from "@/state/chat";
+import { registerPush } from "@/services/push";
+import { purgeTemp } from "@/services/media";
+import { useStore } from "@/lib/store";
+import { useTheme } from "@/theme";
+import { LockScreen, RecoveryCodeScreen } from "@/components/Overlays";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+export default function RootLayout() {
+  const { c, dark } = useTheme();
+  const [booted, setBooted] = useState(false);
+  const status = useStore(session, (s) => s.status);
+  const code = useStore(session, (s) => s.recoveryCodeToShow);
+  const locked = useStore(lock, (s) => s.locked);
 
-SplashScreen.preventAutoHideAsync();
+  useEffect(() => {
+    (async () => {
+      purgeTemp(); // az előző futásból maradt visszafejtett ideiglenes fájlok
+      await initI18n();
+      await loadSession();
+      await initLock().catch((e) => console.warn("[lock] init sikertelen", e));
+      setBooted(true);
+    })();
+  }, []);
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  useEffect(() => {
+    if (status !== "ready") return;
+    void startEngine();
+    void registerPush();
+  }, [status]);
+
+  if (!booted || status === "loading") return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+  if (status === "ready" && code) return <RecoveryCodeScreen />;
+  if (status === "ready" && locked) return <LockScreen />;
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.bg }}>
+      <SafeAreaProvider>
+        <StatusBar style={dark ? "light" : "dark"} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+          <Stack.Protected guard={status === "anon" || status === "needs-keys"}>
+            <Stack.Screen name="(auth)" />
+          </Stack.Protected>
+          <Stack.Protected guard={status === "ready"}>
+            <Stack.Screen name="(app)" />
+          </Stack.Protected>
+        </Stack>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
