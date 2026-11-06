@@ -8,7 +8,7 @@
 import * as Notifications from "expo-notifications";
 import { AppState } from "react-native";
 import { router } from "expo-router";
-import i18n from "i18next";
+import { t } from "i18next";
 import { setIncomingHandler, type Incoming } from "@/state/chat";
 import { toast } from "@/state/toast";
 
@@ -19,7 +19,7 @@ function openChat(data: unknown) {
 }
 
 function show(e: Incoming) {
-  const body = e.kind === "message" ? i18n.t("notify.newMessage") : i18n.t("notify.friendRequest");
+  const body = e.kind === "message" ? t("notify.newMessage") : t("notify.friendRequest");
   if (AppState.currentState === "active") {
     toast.info(`${e.name} · ${body}`);
     return;
