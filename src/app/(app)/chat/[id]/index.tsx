@@ -1,21 +1,23 @@
 /** Beszélgetés: üzenetlista (fordított), rejtett/zárt média, olvasás-jelzés, üzenet-menü, jelentés, szerkesztő. */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Modal, Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHorizontal, Palette, ShieldAlert, Trash2, Mail, X } from "lucide-react-native";
+import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHorizontal, Palette, Reply, ShieldAlert, Trash2, Mail, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/components/ui";
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
 import { Composer } from "@/components/Composer";
-import { acceptKeyChange, chat, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
-import { errorText } from "@/lib/errors";
+import { acceptKeyChange, chat, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
+import { session } from "@/state/session";
 import { useStore } from "@/lib/store";
 import { MAX_VIDEO_DURATION_MS, type REPORT_REASONS } from "@/protocol/constants";
 import { radius, size, space, useTheme } from "@/theme";
 import { CHAT_THEMES, themeByKey } from "@/theme/chatThemes";
 import { currentTheme, isThemeEvent, isVisible, reactionMap, REACTION_EMOJIS } from "@/lib/events";
+import { toast } from "@/state/toast";
 
 const EMPTY: Msg[] = [];
 type Reason = (typeof REPORT_REASONS)[number];
@@ -24,9 +26,12 @@ const REASONS: { key: Reason; icon: typeof Ban }[] = [{ key: "harassment", icon:
 function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
   const { c } = useTheme();
   return (
-    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={onClose} accessibilityLabel="close" />
-      <View style={{ backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space[5], gap: space[4], paddingBottom: space[8] }}>{children}</View>
+    // A háttér csak elhalványul, a lap külön csúszik be (a Modal saját „slide” animációja a hátteret is mozgatná).
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View entering={FadeIn.duration(180)} style={{ flex: 1, backgroundColor: c.overlay }}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="close" />
+      </Animated.View>
+      <Animated.View entering={SlideInDown.duration(220)} style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space[5], gap: space[4], paddingBottom: space[8] }}>{children}</Animated.View>
     </Modal>
   );
 }
@@ -45,16 +50,21 @@ export default function ChatScreen() {
   const [reason, setReason] = useState<Reason>("harassment");
   const [understood, setUnderstood] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [reactPick, setReactPick] = useState<Msg | null>(null);
+  const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  const listRef = useRef<FlatList<Msg>>(null);
 
   useEffect(() => { if (conv) void loadPrefs(conv.other.id); }, [conv]);
   const data = useMemo(() => list.filter(isVisible).reverse(), [list]);
   const reactions = useMemo(() => reactionMap(list), [list]);
   const theme = themeByKey(currentTheme(list));
   const themeBg = (dark ? theme.bgDark : theme.bgLight) || c.bg;
+  // Reakció-ikon csak a beszélgetés utolsó üzenete mellett, és csak kapott üzenetnél.
+  const lastMsgId = useMemo(() => list.filter((m) => m.type !== "event").at(-1)?.id, [list]);
   const lastMineId = useMemo(() => list.filter((m) => m.mine && m.type !== "event").at(-1)?.id, [list]);
   const name = conv ? (conv.available ? displayName(conv, prefs) : t("chats.unavailable")) : "";
   const muted = conv ? isMuted(conv) : false;
-  const fail = (e: unknown) => Alert.alert(errorText(e));
+  const fail = toast.fail;
 
   // Normál (nem rejtett) bejövő szöveg: a képernyőre kerüléskor olvasottá válik. Rejtett/média: felfedéskor/megnyitáskor.
   const onViewable = useCallback(({ viewableItems }: { viewableItems: { item: Msg }[] }) => {
@@ -66,7 +76,7 @@ export default function ChatScreen() {
     const a = r.assets?.[0];
     if (r.canceled || !a) return;
     const isVideo = a.type === "video";
-    if (isVideo && (a.duration ?? 0) > MAX_VIDEO_DURATION_MS) return Alert.alert(t("chat.videoLimit"));
+    if (isVideo && (a.duration ?? 0) > MAX_VIDEO_DURATION_MS) return toast.error(t("chat.videoLimit"));
     sendMedia(id, a.uri, isVideo ? "video" : "image", { mime: a.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg"), width: a.width, height: a.height, durationMs: a.duration ?? undefined }, false).catch(fail);
   };
 
@@ -75,10 +85,18 @@ export default function ChatScreen() {
     const themeName = t(`themes.${ev?.kind === "theme" ? ev.theme : "default"}`);
     return m.mine ? t("chat.youThemeChanged", { theme: themeName }) : t("chat.themeChanged", { name, theme: themeName });
   };
+  const meId = session.get().me?.id;
+  const nameOf = (senderId: string) => (senderId === meId ? t("chat.you") : name);
+  const startReply = useCallback((m: Msg) => { if (replyRefFor(m)) setReplyTo(m); }, []);
+  const scrollToMsg = (mid: string) => {
+    const i = data.findIndex((x) => x.id === mid);
+    if (i >= 0) listRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0.5 });
+  };
   const react = (m: Msg, emoji: string) => {
     const mine = reactions[m.id]?.find((r) => r.mine)?.emoji;
     setMenu(null);
-    sendEvent(id, { kind: "reaction", target: m.id, emoji: mine === emoji ? null : emoji }).catch(() => Alert.alert(t("chat.reactionFailed")));
+    setReactPick(null);
+    sendEvent(id, { kind: "reaction", target: m.id, emoji: mine === emoji ? null : emoji }).catch(() => toast.error(t("chat.reactionFailed")));
   };
   const pickTheme = (key: string) => {
     setPicking(false);
@@ -93,7 +111,7 @@ export default function ChatScreen() {
       await reportMessage(reporting, reason, true);
       setReporting(null);
       setUnderstood(false);
-      Alert.alert(t("report.sent"));
+      toast.success(t("report.sent"));
     } catch (e) { fail(e); }
   };
 
@@ -119,18 +137,18 @@ export default function ChatScreen() {
           </Banner>
         </View>
       ) : null}
-      <FlatList inverted data={data} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
+      <FlatList ref={listRef} inverted data={data} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
         renderItem={({ item }) => isThemeEvent(item) ? (
           <SystemNotice text={noticeText(item)} />
         ) : (
-          <MessageBubble m={item} tint={tint(prefs[conv.other.id]?.color as never)} outColor={theme.out} reactions={reactions[item.id]} showReceipt={item.id === lastMineId} onLongPress={setMenu}
+          <MessageBubble m={item} tint={tint(prefs[conv.other.id]?.color as never)} outColor={theme.out} reactions={reactions[item.id]} showReactButton={!item.mine && item.id === lastMsgId} replyName={item.payload?.reply ? nameOf(item.payload.reply.senderId) : undefined} onReactPress={setReactPick} onReply={startReply} onQuotePress={scrollToMsg} showReceipt={item.id === lastMineId} onLongPress={setMenu}
             onOpenMedia={(m) => router.push({ pathname: "/viewer", params: { convId: id, id: m.id } })}
             onRetry={(m) => Alert.alert(t("chat.failed"), undefined, [{ text: t("chat.retry"), onPress: () => void retrySend(id, m.id) }, { text: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { text: t("common.cancel"), style: "cancel" }])} />
         )} />
       {conv.archived || !conv.available ? (
         <View style={{ padding: space[3] }}><Banner icon={Lock} tone="neutral" text={t("chat.archived")} /></View>
       ) : (
-        <Composer onSendText={(text, hidden) => sendText(id, text, hidden).catch((e) => fail(e instanceof Error && e.message === "tooLong" ? new Error(t("chat.tooLong")) : e))}
+        <Composer reply={replyTo ? replyRefFor(replyTo) : null} replyName={replyTo ? nameOf(replyTo.senderId) : undefined} onCancelReply={() => setReplyTo(null)} onSendText={(text, hidden) => { const rp = replyTo ? replyRefFor(replyTo) : null; setReplyTo(null); return sendText(id, text, hidden, rp).catch((e) => e instanceof Error && e.message === "tooLong" ? toast.error(t("chat.tooLong")) : fail(e)); }}
           onCamera={() => router.push({ pathname: "/camera", params: { convId: id } })} onGallery={() => void pickGallery()} />
       )}
 
@@ -145,11 +163,24 @@ export default function ChatScreen() {
           </View>
         ) : null}
         <View style={{ flexDirection: "row", gap: space[4], justifyContent: "center" }}>
+          {menu && replyRefFor(menu) ? <IconButton icon={Reply} label={t("chat.reply")} onPress={() => { startReply(menu); setMenu(null); }} /> : null}
           {menu?.type === "text" && menu.payload && !menu.payload.hidden ? <IconButton icon={Copy} label={t("chat.copy")} filled onPress={async () => { await Clipboard.setStringAsync(menu.payload?.text ?? ""); setMenu(null); }} /> : null}
           {menu?.mine && menu.status !== "pending" ? <IconButton icon={Trash2} label={t("chat.deleteForAll")} color={c.danger} onPress={() => { const m = menu; setMenu(null); doDelete(m); }} /> : null}
           {menu && !menu.mine ? <IconButton icon={Flag} label={t("chat.report")} onPress={() => { setReporting(menu); setMenu(null); }} /> : null}
           <IconButton icon={X} label={t("common.close")} onPress={() => setMenu(null)} />
         </View>
+      </Sheet>
+
+      <Sheet visible={!!reactPick} onClose={() => setReactPick(null)}>
+        {reactPick ? (
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            {REACTION_EMOJIS.map((e) => (
+              <Pressable key={e} accessibilityRole="button" accessibilityLabel={`${t("chat.react")} ${e}`} onPress={() => react(reactPick, e)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: reactions[reactPick.id]?.some((r) => r.mine && r.emoji === e) ? c.accentSoft : c.surfaceAlt }}>
+                <T style={{ fontSize: 24, lineHeight: 30 }}>{e}</T>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </Sheet>
 
       <Sheet visible={picking} onClose={() => setPicking(false)}>

@@ -11,6 +11,15 @@ import type { z } from "zod";
 import type { SendMessageBodySchema } from "@/protocol/schemas";
 
 export type SendMessageBody = z.input<typeof SendMessageBodySchema>;
+/** Idézett üzenet. `snippet`: a szöveg eleje (rejtett üzenetnél nincs). */
+export interface ReplyRef {
+  id: string;
+  senderId: string;
+  kind: "text" | "image" | "video";
+  hidden?: boolean;
+  snippet?: string;
+}
+
 export type MessageType = "text" | "image" | "video" | "event";
 
 /** Titkosított rendszer-esemény: reakció egy üzenetre (emoji = null: visszavonás) vagy a beszélgetés témájának váltása. */
@@ -39,6 +48,8 @@ export interface Payload {
   media?: MediaDescriptor;
   /** Csak `event` típusú üzenetnél. */
   event?: ChatEvent;
+  /** Válasz egy korábbi üzenetre: az idézett üzenet azonosítója és rövid, titkosítva küldött kivonata. */
+  reply?: ReplyRef;
 }
 
 export interface Recipients {

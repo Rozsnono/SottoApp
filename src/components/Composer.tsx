@@ -5,10 +5,11 @@
 import { useState } from "react";
 import { Modal, Pressable, TextInput, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Camera, EyeOff, Image as ImageIcon, Paperclip, Send, Video, X } from "lucide-react-native";
+import { Camera, EyeOff, Image as ImageIcon, Paperclip, Reply, Send, Video, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { radius, size, space, type as ty, useTheme } from "@/theme";
-import { IconButton } from "./ui";
+import { IconButton, T } from "./ui";
+import type { ReplyRef } from "@/crypto/message";
 
 /** Küldés gomb + SendMenu; `onSend(hidden)`. */
 export function SendButton({ onSend, disabled }: { onSend: (hidden: boolean) => void; disabled?: boolean }) {
@@ -31,13 +32,23 @@ export function SendButton({ onSend, disabled }: { onSend: (hidden: boolean) => 
   );
 }
 
-export function Composer({ onSendText, onCamera, onGallery, disabled }: { onSendText: (text: string, hidden: boolean) => void; onCamera: () => void; onGallery: () => void; disabled?: boolean }) {
+export function Composer({ onSendText, onCamera, onGallery, disabled, reply, replyName, onCancelReply }: { onSendText: (text: string, hidden: boolean) => void; onCamera: () => void; onGallery: () => void; disabled?: boolean; reply?: ReplyRef | null; replyName?: string; onCancelReply?: () => void }) {
   const { c } = useTheme();
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const [attach, setAttach] = useState(false);
   return (
     <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, padding: space[2], gap: space[2] }}>
+      {reply ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[2] }}>
+          <Reply size={size.iconSm} color={c.accent} />
+          <View style={{ flex: 1, borderLeftWidth: 3, borderLeftColor: c.accent, paddingLeft: space[2] }}>
+            <T v="caption" muted>{replyName}</T>
+            {reply.hidden ? <EyeOff size={14} color={c.textMuted} /> : reply.kind === "image" ? <ImageIcon size={14} color={c.textMuted} /> : reply.kind === "video" ? <Video size={14} color={c.textMuted} /> : <T v="bodySm" numberOfLines={1}>{reply.snippet}</T>}
+          </View>
+          <IconButton icon={X} label={t("common.cancel")} onPress={onCancelReply} />
+        </View>
+      ) : null}
       {attach ? (
         <View style={{ flexDirection: "row", gap: space[2], paddingHorizontal: space[2] }}>
           <IconButton icon={Camera} label={t("chat.camera")} onPress={() => { setAttach(false); onCamera(); }} />

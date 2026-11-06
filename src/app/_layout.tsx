@@ -14,6 +14,7 @@ import { purgeTemp } from "@/services/media";
 import { useStore } from "@/lib/store";
 import { useTheme } from "@/theme";
 import { LockScreen, RecoveryCodeScreen } from "@/components/Overlays";
+import { Toaster } from "@/components/Toaster";
 
 export default function RootLayout() {
   const { c, dark } = useTheme();
@@ -39,21 +40,21 @@ export default function RootLayout() {
   }, [status]);
 
   if (!booted || status === "loading") return <View style={{ flex: 1, backgroundColor: c.bg }} />;
-  if (status === "ready" && code) return <RecoveryCodeScreen />;
-  if (status === "ready" && locked) return <LockScreen />;
+  const overlay = status === "ready" && code ? <RecoveryCodeScreen /> : status === "ready" && locked ? <LockScreen /> : null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.bg }}>
       <SafeAreaProvider>
         <StatusBar style={dark ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+        {overlay ?? <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
           <Stack.Protected guard={status === "anon" || status === "needs-keys"}>
             <Stack.Screen name="(auth)" />
           </Stack.Protected>
           <Stack.Protected guard={status === "ready"}>
             <Stack.Screen name="(app)" />
           </Stack.Protected>
-        </Stack>
+        </Stack>}
+        <Toaster />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

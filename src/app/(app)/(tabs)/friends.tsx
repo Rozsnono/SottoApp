@@ -1,6 +1,6 @@
 /** Ismerősök: bejövő kérések, ismerősök, kimenő kérések. Műveletek kerek ikongombokkal. */
 import { useState } from "react";
-import { Alert, SectionList, View } from "react-native";
+import { SectionList, View } from "react-native";
 import { router } from "expo-router";
 import { Check, Clock, UserPlus, Undo2, Users, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -8,13 +8,13 @@ import { EmptyState, IconButton, ListItem, Monogram, Screen, T } from "@/compone
 import { chat, friendAction, refreshLists } from "@/state/chat";
 import { useStore } from "@/lib/store";
 import { space } from "@/theme";
-import { errorText } from "@/lib/errors";
+import { toast } from "@/state/toast";
 
 export default function Friends() {
   const { t } = useTranslation();
   const s = useStore(chat, (x) => x);
   const [refreshing, setRefreshing] = useState(false);
-  const act = (id: string, a: "accept" | "decline" | "cancel") => friendAction(id, a).catch((e) => Alert.alert(errorText(e)));
+  const act = (id: string, a: "accept" | "decline" | "cancel") => friendAction(id, a).catch((e) => toast.fail(e));
   const sections = [
     { key: "in", title: t("friends.incoming"), data: s.incoming },
     { key: "fr", title: t("friends.title"), data: s.friends },

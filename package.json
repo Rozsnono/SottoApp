@@ -1,6 +1,6 @@
 {
   "name": "sotto-app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/ui": "~58.0.27",
@@ -67,7 +67,8 @@
     "sync:protocol": "node scripts/sync-protocol.mjs",
     "check:protocol": "node scripts/sync-protocol.mjs --check",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bump": "node scripts/bump-version.mjs"
   },
   "private": true
 }

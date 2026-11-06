@@ -1,6 +1,6 @@
 /** Alkalmazáson belüli kamera: fotó/videó (max. 60 mp), vaku, kameraváltás. Nincs automatikus mentés a galériába. */
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from "expo-camera";
 import { Image } from "expo-image";
@@ -10,9 +10,9 @@ import { Button, IconButton, T } from "@/components/ui";
 import { SendButton } from "@/components/Composer";
 import { sendMedia } from "@/state/chat";
 import { releaseCapture } from "@/services/media";
-import { errorText } from "@/lib/errors";
 import { MAX_VIDEO_DURATION_MS } from "@/protocol/constants";
 import { space } from "@/theme";
+import { toast } from "@/state/toast";
 
 type Captured = { uri: string; kind: "image" | "video"; width?: number; height?: number; durationMs?: number };
 
@@ -59,14 +59,14 @@ export default function CameraScreen() {
       }
     } catch (e) {
       setRecording(false);
-      Alert.alert(errorText(e));
+      toast.fail(e);
     }
   };
 
   const discard = () => { releaseCapture(shot?.uri); setShot(null); };
   const send = (hidden: boolean) => {
     if (!shot) return;
-    sendMedia(convId, shot.uri, shot.kind, { mime: shot.kind === "video" ? "video/mp4" : "image/jpeg", width: shot.width, height: shot.height, durationMs: shot.durationMs }, hidden).catch((e) => Alert.alert(errorText(e)));
+    sendMedia(convId, shot.uri, shot.kind, { mime: shot.kind === "video" ? "video/mp4" : "image/jpeg", width: shot.width, height: shot.height, durationMs: shot.durationMs }, hidden).catch((e) => toast.fail(e));
     router.back();
   };
 

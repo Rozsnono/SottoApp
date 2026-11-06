@@ -10,7 +10,7 @@ import { loadMeta, saveMeta, wipeMeta, type Meta } from "@/lib/meta";
 import { SYNC_INTERVAL_MS } from "@/config";
 import { session, setSessionEndedHandler } from "./session";
 import { uuidv4 } from "@/crypto/keys";
-import { buildOutgoing, openWire, verifyWire, type ChatEvent, type MessageType, type Payload, type Recipients, type WireMessage } from "@/crypto/message";
+import { buildOutgoing, openWire, verifyWire, type ChatEvent, type MessageType, type Payload, type ReplyRef, type Recipients, type WireMessage } from "@/crypto/message";
 import { decryptPrefs, encryptPrefs, type ContactPrefs } from "@/crypto/prefs";
 import { dropMediaConfig, encryptAndUpload, purgeTemp, releaseCapture } from "@/services/media";
 import { MAX_TEXT_CIPHERTEXT_CHARS, type REPORT_REASONS } from "@/protocol/constants";
@@ -280,11 +280,18 @@ async function deliver(m: Msg): Promise<void> {
   }
 }
 
-export async function sendText(convId: string, text: string, hidden: boolean): Promise<void> {
+/** Idézett üzenet kivonata: szöveg eleje; rejtett üzenetnél a tartalom nem kerül a kivonatba. */
+export function replyRefFor(m: Msg): ReplyRef | null {
+  if (m.type === "event" || m.broken || m.forged || m.status === "pending" || m.status === "failed") return null;
+  const hidden = !!m.payload?.hidden;
+  return { id: m.id, senderId: m.senderId, kind: m.type, ...(hidden ? { hidden: true } : {}), ...(!hidden && m.type === "text" && m.payload?.text ? { snippet: m.payload.text.slice(0, 100) } : {}) };
+}
+
+export async function sendText(convId: string, text: string, hidden: boolean, reply?: ReplyRef | null): Promise<void> {
   const t = text.trim();
   if (!t) return;
   if (t.length > MAX_TEXT_CIPHERTEXT_CHARS / 2) throw new Error("tooLong");
-  const m = newPending(convId, "text", { v: 1, text: t, ...(hidden ? { hidden: true } : {}) });
+  const m = newPending(convId, "text", { v: 1, text: t, ...(hidden ? { hidden: true } : {}), ...(reply ? { reply } : {}) });
   putMessages(convId, (l) => [...l, m]);
   await deliver(m).catch(() => undefined);
 }

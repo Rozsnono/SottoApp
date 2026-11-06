@@ -8,9 +8,9 @@ import { Button, ColorPicker, IconButton, Kav, ListItem, Monogram, Screen, T, Te
 import { blockUser, chat, displayName, loadPrefs, removeFriend, savePrefs, isMuted, setMute, setVerified } from "@/state/chat";
 import { session } from "@/state/session";
 import { safetyNumber } from "@/crypto/safety";
-import { errorText } from "@/lib/errors";
 import { useStore } from "@/lib/store";
 import { radius, size, space, useTheme } from "@/theme";
+import { toast } from "@/state/toast";
 
 export default function Profile() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,7 +26,7 @@ export default function Profile() {
   if (!conv || !other) return <Screen><View /></Screen>;
   const me = session.get().me!;
   const name = displayName(conv, prefs);
-  const fail = (e: unknown) => Alert.alert(errorText(e));
+  const fail = toast.fail;
   const sn = other.identityPublicKey ? safetyNumber(me.identityPublicKey, other.identityPublicKey) : null;
   const fp = sn?.join("") ?? "";
   const verified = !!fp && verifiedMap[other.id] === fp;

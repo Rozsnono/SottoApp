@@ -15,6 +15,7 @@ import { chat, markRead } from "@/state/chat";
 import { downloadAndDecrypt, releaseTemp } from "@/services/media";
 import { useStore } from "@/lib/store";
 import { space } from "@/theme";
+import { toast } from "@/state/toast";
 
 function VideoBox({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (p) => { p.play(); });
@@ -60,8 +61,8 @@ export default function Viewer() {
       const p = await requestPermissionsAsync(true);
       if (!p.granted || !uri) return;
       await Asset.create(uri);
-      Alert.alert(t("profile.saved"));
-    } catch (e) { console.warn("[viewer] mentés sikertelen", e instanceof Error ? e.message : e); Alert.alert(t("common.error")); }
+      toast.success(t("profile.saved"));
+    } catch (e) { console.warn("[viewer] mentés sikertelen", e instanceof Error ? e.message : e); toast.error(t("common.error")); }
   } }]);
 
   const bg = dy.interpolate({ inputRange: [0, 300], outputRange: [1, 0.3], extrapolate: "clamp" });
