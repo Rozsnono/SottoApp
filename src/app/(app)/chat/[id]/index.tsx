@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/components/ui";
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
 import { Composer } from "@/components/Composer";
-import { acceptKeyChange, chat, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
+import { acceptKeyChange, chat, setActiveConv, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
 import { session } from "@/state/session";
 import { useStore } from "@/lib/store";
 import { MAX_VIDEO_DURATION_MS, type REPORT_REASONS } from "@/protocol/constants";
@@ -56,6 +56,8 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<Msg>>(null);
 
   useEffect(() => { if (conv) void loadPrefs(conv.other.id); }, [conv]);
+  // Megnyitott chatben az előtérben érkező üzenet nem kelt értesítést.
+  useEffect(() => { setActiveConv(id ?? null); return () => setActiveConv(null); }, [id]);
   const data = useMemo(() => list.filter(isVisible).reverse(), [list]);
   const reactions = useMemo(() => reactionMap(list), [list]);
   const theme = themeByKey(currentTheme(list));

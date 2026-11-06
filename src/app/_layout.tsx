@@ -10,6 +10,7 @@ import { loadSession, session } from "@/state/session";
 import { initLock, lock } from "@/state/lock";
 import { startEngine } from "@/state/chat";
 import { registerPush } from "@/services/push";
+import { initNotify, stopNotify } from "@/services/notify";
 import { purgeTemp } from "@/services/media";
 import { useStore } from "@/lib/store";
 import { useTheme } from "@/theme";
@@ -38,6 +39,8 @@ export default function RootLayout() {
     if (status !== "ready") return;
     void startEngine();
     void registerPush();
+    initNotify();
+    return stopNotify;
   }, [status]);
 
   if (!booted || status === "loading") return <View style={{ flex: 1, backgroundColor: c.bg }} />;

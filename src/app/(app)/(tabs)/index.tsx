@@ -1,11 +1,11 @@
 /** Chatek listája: egy soros előnézet (média = ikon, rejtett = EyeOff, lezárt = lakat), némítás-jel, olvasatlan-jelvény. */
-import { useEffect } from "react";
-import { FlatList, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { FlatList, RefreshControl, View } from "react-native";
 import { router } from "expo-router";
 import { BellOff, EyeOff, Image as ImageIcon, Lock, MessageCircle, ServerOff, SquarePen, Video, WifiOff } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Banner, EmptyState, IconButton, ListItem, Monogram, Screen, T } from "@/components/ui";
-import { chat, displayName, isMuted, loadPrefs, type Conv, type Msg } from "@/state/chat";
+import { Banner, EmptyState, IconButton, ListItem, Monogram, Screen, SkeletonRows, T } from "@/components/ui";
+import { chat, displayName, isMuted, loadPrefs, pollOnce, refreshLists, type Conv, type Msg } from "@/state/chat";
 import { useStore } from "@/lib/store";
 import { size, space, useTheme } from "@/theme";
 
@@ -42,6 +42,12 @@ export default function Chats() {
   const { t } = useTranslation();
   const convs = useStore(chat, (s) => s.conversations);
   const online = useStore(chat, (s) => s.online);
+  const ready = useStore(chat, (s) => s.ready);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await Promise.all([refreshLists(), pollOnce()]); } finally { setRefreshing(false); }
+  }, []);
   const messages = useStore(chat, (s) => s.messages);
   const ts = (c: Conv) => messages[c.id]?.findLast((m) => m.type !== "event")?.createdAt ?? 0;
   const sorted = [...convs].sort((a, b) => ts(b) - ts(a));
@@ -52,7 +58,10 @@ export default function Chats() {
         <IconButton icon={SquarePen} label={t("chats.newChat")} onPress={() => router.push("/add-friend")} />
       </View>
       {!online ? <View style={{ padding: space[3] }}><Banner icon={WifiOff} tone="neutral" text={t("common.offline")}><ServerOff size={size.iconSm} color="#888" /></Banner></View> : null}
-      <FlatList data={sorted} keyExtractor={(c) => c.id} renderItem={({ item }) => <Row conv={item} />} ListEmptyComponent={<EmptyState icon={MessageCircle} text={t("chats.empty")} />} />
+      {!ready ? <SkeletonRows /> : (
+        <FlatList data={sorted} keyExtractor={(c) => c.id} renderItem={({ item }) => <Row conv={item} />} ListEmptyComponent={<EmptyState icon={MessageCircle} text={t("chats.empty")} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />} />
+      )}
     </Screen>
   );
 }

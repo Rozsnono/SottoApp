@@ -61,3 +61,6 @@ Docs: https://docs.expo.dev/eas/index.md
 `source ~/.sotto-signing/env.sh` (helyi keystore, repón kívül, soha nem commitolható) → `EXPO_PUBLIC_API_URL=<url> npx expo prebuild --platform android --no-install` → `cd android && NODE_ENV=production ./gradlew assembleRelease`. Kimenet: `android/app/build/outputs/apk/release/app-release.apk`. Csomagnév: `com.sotto.app` (nyitott döntés, még nem végleges). A keystore elvesztése = a későbbi frissítések nem telepíthetők ugyanerre az appra: készíts róla biztonsági mentést. Az API URL a buildbe égetve; éles: `https://api.sotto.commandos.rozsnorbert.hu` (HTTPS, cleartext tiltva).
 
 **Verzió:** minden változtatásnál `npm run bump` (lásd ../AGENTS.md); a Beállítások alján a verzió és az API verziója látszik.
+
+## Értesítések (1.2.1)
+`src/services/notify.ts`: a chat motor `setIncomingHandler` hookján át kap eseményt (új üzenet, új ismerős-kérés). Előtérben toast, háttérben helyi értesítés; némított és éppen megnyitott chat kimarad. Háttérben a lekérdezés nem megbízható: távoli push-hoz EAS projectId + FCM kulcs kell. Skeleton: `Skeleton`/`SkeletonRows` (ui.tsx).

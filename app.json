@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sotto",
     "slug": "sotto-app",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sotto",
@@ -33,7 +33,7 @@
         "POST_NOTIFICATIONS"
       ],
       "package": "com.sotto.app",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/images/favicon.png"

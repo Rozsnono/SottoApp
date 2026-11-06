@@ -76,6 +76,15 @@ let paused = false;
 export const pausePolling = (p: boolean) => { paused = p; };
 let appSub: { remove(): void } | null = null;
 
+/** Értesítést kiváltó esemény (új üzenet / új ismerős-kérés); a megjelenítés a `services/notify.ts` dolga. */
+export type Incoming = { kind: "message"; convId: string; name: string } | { kind: "request"; name: string };
+let incomingHandler: ((e: Incoming) => void) | null = null;
+export const setIncomingHandler = (fn: ((e: Incoming) => void) | null) => { incomingHandler = fn; };
+/** Az éppen megnyitott beszélgetés (ott nincs értesítés, ha az app előtérben van). */
+let activeConv: string | null = null;
+export const setActiveConv = (id: string | null) => { activeConv = id; };
+let pollCount = 0;
+
 const sortMsgs = (a: Msg, b: Msg) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt;
 
 function putMessages(convId: string, upd: (list: Msg[]) => Msg[]) {
@@ -148,6 +157,11 @@ export async function refreshLists(): Promise<void> {
   try {
     const [convs, fr] = await Promise.all([api<{ items: Conv[] }>("/api/conversations"), api<{ friends: FriendEntry[]; incoming: FriendEntry[]; outgoing: FriendEntry[] }>("/api/friends")]);
     convs.items.forEach((c) => checkPin(c.other));
+    const before = chat.get();
+    if (before.ready) {
+      const known = new Set(before.incoming.map((f) => f.friendshipId));
+      for (const f of fr.incoming) if (!known.has(f.friendshipId)) incomingHandler?.({ kind: "request", name: f.user.username });
+    }
     chat.set({ conversations: convs.items, friends: fr.friends, incoming: fr.incoming, outgoing: fr.outgoing });
     noteOnline(true);
   } catch (e) {
@@ -178,7 +192,7 @@ export async function pollOnce(initial = false): Promise<void> {
     for (;;) {
       const r = await api<SyncResp>(`/api/messages/sync?cursor=${encodeURIComponent(cursor)}`);
       if (r.messages.some((m) => !chat.get().conversations.some((c) => c.id === m.conversationId))) await refreshLists();
-      applySync(r);
+      applySync(r, initial);
       cursor = r.cursor;
       noteOnline(true);
       if (!r.hasMore) break;
@@ -188,10 +202,11 @@ export async function pollOnce(initial = false): Promise<void> {
   } finally {
     polling = false;
   }
-  void initial;
+  // Ismerős-kérések nem érkeznek a szinkronnal: néhány ciklusonként frissítjük a listákat.
+  if (!initial && ++pollCount % 5 === 0) void refreshLists();
 }
 
-function applySync(r: SyncResp) {
+function applySync(r: SyncResp, initial: boolean) {
   const keys = session.get().keys;
   const me = session.get().me;
   if (!keys || !me) return;
@@ -211,6 +226,11 @@ function applySync(r: SyncResp) {
       status: existing?.status === "read" ? "read" : "sent", seq: w.seq, createdAt: Date.parse(w.createdAt), mediaRef: w.mediaRef,
     };
     putMessages(w.conversationId, (l) => [...l.filter((m) => m.id !== w.id && m.clientMessageId !== w.clientMessageId), msg]);
+    // Értesítés: csak friss, kapott, látható üzenetről; a kezdeti (teljes) szinkron és a némított chat kimarad.
+    const seen = activeConv === w.conversationId && AppState.currentState === "active";
+    if (!initial && !existing && !mine && !forged && w.type !== "event" && conv && !isMuted(conv) && !seen) {
+      incomingHandler?.({ kind: "message", convId: conv.id, name: displayName(conv, chat.get().prefs) });
+    }
   }
   const delIds = new Set(r.deletions.map((d) => d.messageId));
   const readIds = new Set(r.receipts.map((x) => x.messageId));

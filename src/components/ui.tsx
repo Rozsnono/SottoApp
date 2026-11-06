@@ -2,10 +2,10 @@
  * Alap UI-elemek (docs/design/06-components.md): Text, Button, IconButton, TextField, Monogram, Banner, EmptyState,
  * ListItem, ColorPicker, SegmentedIcons. Ikon-központú; minden interaktív elemnek kötelező `label` (akadálymentesség).
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from "react-native";
 import { Check, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CONTACT_COLOR_KEYS, contactColors, radius, size, space, type as ty, useTheme, type ContactColor } from "@/theme";
 
@@ -153,3 +153,31 @@ const st = StyleSheet.create({
   seg: { flexDirection: "row", borderRadius: radius.md, padding: 2 },
   segCell: { flex: 1, minHeight: size.touchMin, borderRadius: radius.md - 2, alignItems: "center", justifyContent: "center" },
 });
+
+/** Töltés közbeni helykitöltő (skeleton): lassan pulzáló sáv; a pulzálás az egész listán szinkronban fut. */
+export function Skeleton({ width, height = 14, round, style }: { width?: number | `${number}%`; height?: number; round?: boolean; style?: StyleProp<ViewStyle> }) {
+  const { c } = useTheme();
+  const o = useSharedValue(0.45);
+  useEffect(() => {
+    o.set(withRepeat(withSequence(withTiming(1, { duration: 750 }), withTiming(0.45, { duration: 750 })), -1));
+  }, [o]);
+  const a = useAnimatedStyle(() => ({ opacity: o.get() }));
+  return <Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[{ width: width ?? "100%", height, borderRadius: round ? height / 2 : 6, backgroundColor: c.surfaceAlt }, a, style]} />;
+}
+
+/** Lista-sor váz: kör (monogram) + két sor, a ListItem méreteivel. */
+export function SkeletonRows({ count = 6 }: { count?: number }) {
+  return (
+    <View accessibilityLabel="loading" style={{ paddingTop: space[2] }}>
+      {Array.from({ length: count }, (_, i) => (
+        <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: space[4], minHeight: 64 }}>
+          <Skeleton width={44} height={44} round />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton width={`${45 + ((i * 17) % 30)}%`} height={14} />
+            <Skeleton width={`${30 + ((i * 23) % 40)}%`} height={11} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}

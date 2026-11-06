@@ -4,8 +4,8 @@ import { SectionList, View } from "react-native";
 import { router } from "expo-router";
 import { Check, Clock, UserPlus, Undo2, Users, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { EmptyState, IconButton, ListItem, Monogram, Screen, T } from "@/components/ui";
-import { chat, friendAction, refreshLists } from "@/state/chat";
+import { EmptyState, IconButton, ListItem, Monogram, Screen, SkeletonRows, T } from "@/components/ui";
+import { chat, friendAction, pollOnce, refreshLists } from "@/state/chat";
 import { useStore } from "@/lib/store";
 import { space } from "@/theme";
 import { toast } from "@/state/toast";
@@ -26,7 +26,7 @@ export default function Friends() {
         <T v="h1">{t("friends.title")}</T>
         <IconButton icon={UserPlus} label={t("friends.add")} onPress={() => router.push("/add-friend")} />
       </View>
-      <SectionList sections={sections} keyExtractor={(e) => e.friendshipId} refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refreshLists(); setRefreshing(false); }}
+      {!s.ready ? <SkeletonRows count={4} /> : <SectionList sections={sections} keyExtractor={(e) => e.friendshipId} refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await Promise.all([refreshLists(), pollOnce()]); setRefreshing(false); }}
         ListEmptyComponent={<EmptyState icon={Users} text={t("friends.none")} />}
         renderSectionHeader={({ section }) => <T v="caption" muted style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>{section.title}</T>}
         renderItem={({ item, section }) => (
@@ -40,7 +40,7 @@ export default function Friends() {
             ) : section.key === "out" ? (
               <View style={{ flexDirection: "row", alignItems: "center" }}><Clock size={18} color="#888" /><IconButton icon={Undo2} label={t("friends.cancel")} onPress={() => void act(item.friendshipId, "cancel")} /></View>
             ) : undefined} />
-        )} />
+        )} />}
     </Screen>
   );
 }
