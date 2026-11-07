@@ -9,6 +9,7 @@ import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHori
 import { useTranslation } from "react-i18next";
 import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/components/ui";
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
+import { activityText } from "@/lib/time";
 import { Composer } from "@/components/Composer";
 import { acceptKeyChange, chat, setActiveConv, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
 import { session } from "@/state/session";
@@ -54,6 +55,8 @@ export default function ChatScreen() {
   const [reactPick, setReactPick] = useState<Msg | null>(null);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const listRef = useRef<FlatList<Msg>>(null);
+  const [infoId, setInfoId] = useState<string | null>(null);
+  const act = useStore(chat, (s) => (conv ? s.activity[conv.other.id] : undefined));
 
   useEffect(() => { if (conv) void loadPrefs(conv.other.id); }, [conv]);
   // Megnyitott chatben az előtérben érkező üzenet nem kelt értesítést.
@@ -126,7 +129,10 @@ export default function ChatScreen() {
         <IconButton icon={ChevronLeft} label={t("common.back")} onPress={() => router.back()} />
         <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={() => router.push({ pathname: "/chat/[id]/profile", params: { id } })} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: space[2] }}>
           <Monogram name={name} px={36} tint={tint(prefs[conv.other.id]?.color as never)} unavailable={!conv.available} />
-          <T v="title" numberOfLines={1} style={{ flexShrink: 1 }}>{name}</T>
+          <View style={{ flexShrink: 1 }}>
+            <T v="title" numberOfLines={1}>{name}</T>
+            {activityText(act) ? <T v="caption" color={act?.online ? c.success : c.textMuted}>{activityText(act)}</T> : null}
+          </View>
           <Lock size={14} color={c.textMuted} accessibilityLabel={t("chats.encrypted")} />
         </Pressable>
         <IconButton icon={Palette} label={t("chat.theme")} onPress={() => setPicking(true)} />
@@ -140,13 +146,13 @@ export default function ChatScreen() {
           </Banner>
         </View>
       ) : null}
-      <FlatList ref={listRef} inverted data={data} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
+      <FlatList ref={listRef} inverted data={data} extraData={infoId} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
         renderItem={({ item }) => isThemeEvent(item) ? (
           <SystemNotice text={noticeText(item)} />
         ) : (
           <MessageBubble m={item} tint={tint(prefs[conv.other.id]?.color as never)} outColor={theme.out} reactions={reactions[item.id]} showReactButton={!item.mine && item.id === lastMsgId} replyName={item.payload?.reply ? nameOf(item.payload.reply.senderId) : undefined} onReactPress={setReactPick} onReply={startReply} onQuotePress={scrollToMsg} showReceipt={item.id === lastMineId} onLongPress={setMenu}
             onOpenMedia={(m) => router.push({ pathname: "/viewer", params: { convId: id, id: m.id } })}
-            onRetry={(m) => showDialog({ title: t("chat.failed"), icon: RotateCw, actions: [{ label: t("common.cancel"), style: "cancel" }, { label: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { label: t("chat.retry"), onPress: () => void retrySend(id, m.id) }] })} />
+            infoOpen={infoId === item.id} onTap={(m) => setInfoId((x) => (x === m.id ? null : m.id))} onRetry={(m) => showDialog({ title: t("chat.failed"), icon: RotateCw, actions: [{ label: t("common.cancel"), style: "cancel" }, { label: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { label: t("chat.retry"), onPress: () => void retrySend(id, m.id) }] })} />
         )} />
       {conv.archived || !conv.available ? (
         <View style={{ padding: space[3] }}><Banner icon={Lock} tone="neutral" text={t("chat.archived")} /></View>

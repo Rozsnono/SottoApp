@@ -1,10 +1,10 @@
 /** Fiókbeállítások: felhasználónév, kereshetőség, ki jelölhet ismerősnek, jelszócsere, fióktörlés. */
 import { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, Switch, View } from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as LocalAuthentication from "expo-local-authentication";
-import { ChevronLeft, Copy, EyeOff, Globe, KeyRound, Lock, Trash2, User, Users } from "lucide-react-native";
+import { Activity, ChevronLeft, Copy, EyeOff, Globe, KeyRound, Lock, Trash2, User, Users } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, IconButton, Kav, ListItem, Screen, SegmentedIcons, T, TextField } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -17,7 +17,7 @@ import { toast } from "@/state/toast";
 
 type Disc = "everyone" | "friends_only" | "hidden";
 type Policy = "everyone" | "friends_only";
-interface Settings { username: string; discoverability: Disc; friendRequestPolicy: Policy }
+interface Settings { username: string; discoverability: Disc; friendRequestPolicy: Policy; showActivity: boolean }
 
 export default function AccountSettings() {
   const { c } = useTheme();
@@ -32,7 +32,7 @@ export default function AccountSettings() {
 
   useEffect(() => { api<Settings>("/api/account/settings").then(setS).catch(fail); }, [fail]);
 
-  const save = (patch: Partial<Pick<Settings, "discoverability" | "friendRequestPolicy">>) => {
+  const save = (patch: Partial<Pick<Settings, "discoverability" | "friendRequestPolicy" | "showActivity">>) => {
     if (!s) return;
     const prev = s;
     setS({ ...s, ...patch }); // optimista; hibánál visszaáll
@@ -73,6 +73,10 @@ export default function AccountSettings() {
             <View style={{ gap: space[2] }}>
               <T v="caption" muted>{t("settings.discoverability")}</T>
               <SegmentedIcons<Disc> value={s.discoverability} onChange={(v) => save({ discoverability: v })} items={[{ key: "everyone", icon: Globe, label: t("settings.everyone") }, { key: "friends_only", icon: Users, label: t("settings.friendsOnly") }, { key: "hidden", icon: EyeOff, label: t("settings.hiddenOpt") }]} />
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}><Activity size={size.icon} color={c.textMuted} /><T>{t("activity.share")}</T></View>
+              <Switch accessibilityLabel={t("activity.share")} value={s.showActivity} onValueChange={(v) => save({ showActivity: v })} />
             </View>
             <View style={{ gap: space[2] }}>
               <T v="caption" muted>{t("settings.requestPolicy")}</T>

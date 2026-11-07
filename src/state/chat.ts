@@ -41,6 +41,8 @@ export interface Msg {
   status: MsgStatus;
   seq: number | null;
   createdAt: number;
+  /** Mikor olvasta el a másik fél (saját üzeneteknél, ha a szerver visszaigazolta). */
+  readAt?: number;
   mediaRef: string | null;
   /** Helyi (küldés előtti) forrás-URI a feltöltés újrapróbálásához. */
   localUri?: string;
@@ -61,9 +63,11 @@ interface ChatState {
   readIds: Record<string, true>;
   /** userId → ellenőrzött biztonsági szám (ujjlenyomat); kulcsváltáskor már nem egyezik. */
   verified: Record<string, string>;
+  /** userId → aktivitás (ismerősök; csak ha mindkét fél megosztja). `online`: a lekéréskor aktív volt. */
+  activity: Record<string, { online: boolean; at: number }>;
 }
 
-export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {} });
+export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, activity: {} });
 
 /** A szerverről kapott (titkosított) üzenetek – a jelentéshez újra kinyitjuk a kulcsot; nyílt tartalmat nem tartalmaz. */
 const wires = new Map<string, WireMessage>();
@@ -99,6 +103,7 @@ export async function startEngine(): Promise<void> {
   chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified } });
   await refreshLists();
   await pollOnce(true);
+  void refreshActivity();
   chat.set({ ready: true });
   timer ??= setInterval(() => void pollOnce(), SYNC_INTERVAL_MS);
   appSub ??= AppState.addEventListener("change", (st) => { if (st === "active") void pollOnce(); });
@@ -115,7 +120,7 @@ export function stopEngine(): void {
   wipeMeta();
   purgeTemp();
   dropMediaConfig();
-  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {} });
+  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, activity: {} });
 }
 setSessionEndedHandler(stopEngine);
 
@@ -151,6 +156,22 @@ export function acceptKeyChange(userId: string): void {
   delete meta.verified[userId];
   saveMeta(meta);
   chat.set((s) => ({ keyChanged: { ...s.keyChanged, [userId]: false }, verified: { ...meta.verified } }));
+}
+
+/** „Fent van” küszöb: a szerver 20 mp-enként frissíti az aktivitást, a kliens 8 mp-enként kérdez. */
+const ONLINE_WINDOW_MS = 60_000;
+
+/** Ismerősök aktivitásának lekérése (hiba esetén csendben marad: nem kritikus). */
+export async function refreshActivity(): Promise<void> {
+  try {
+    const r = await api<{ items: { userId: string; lastSeenAt: string }[] }>("/api/presence");
+    const now = Date.now();
+    const activity: ChatState["activity"] = {};
+    for (const i of r.items) { const at = Date.parse(i.lastSeenAt); activity[i.userId] = { at, online: now - at < ONLINE_WINDOW_MS }; }
+    chat.set({ activity });
+  } catch (e) {
+    console.warn("[chat] aktivitás lekérése sikertelen:", e instanceof Error ? e.message : e);
+  }
 }
 
 export async function refreshLists(): Promise<void> {
@@ -203,7 +224,11 @@ export async function pollOnce(initial = false): Promise<void> {
     polling = false;
   }
   // Ismerős-kérések nem érkeznek a szinkronnal: néhány ciklusonként frissítjük a listákat.
-  if (!initial && ++pollCount % 5 === 0) void refreshLists();
+  if (!initial) {
+    pollCount++;
+    if (pollCount % 5 === 0) void refreshLists();
+    if (pollCount % 2 === 0) void refreshActivity();
+  }
 }
 
 function applySync(r: SyncResp, initial: boolean) {
@@ -234,10 +259,11 @@ function applySync(r: SyncResp, initial: boolean) {
   }
   const delIds = new Set(r.deletions.map((d) => d.messageId));
   const readIds = new Set(r.receipts.map((x) => x.messageId));
+  const readAtById = new Map(r.receipts.map((x) => [x.messageId, Date.parse(x.readAt)]));
   if (delIds.size || readIds.size) {
     chat.set((s) => {
       const next: Record<string, Msg[]> = {};
-      for (const [cid, list] of Object.entries(s.messages)) next[cid] = list.filter((m) => !delIds.has(m.id)).map((m) => (readIds.has(m.id) && m.mine ? { ...m, status: "read" as const } : m));
+      for (const [cid, list] of Object.entries(s.messages)) next[cid] = list.filter((m) => !delIds.has(m.id)).map((m) => (readIds.has(m.id) && m.mine ? { ...m, status: "read" as const, readAt: readAtById.get(m.id) } : m));
       return { messages: next };
     });
   }

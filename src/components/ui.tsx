@@ -75,11 +75,12 @@ export function TextField({ label, icon: Icon, secure, error, ok, ...rest }: { l
   );
 }
 
-export function Monogram({ name, tint, px = 44, unavailable }: { name: string; tint?: string | null; px?: number; unavailable?: boolean }) {
+export function Monogram({ name, tint, px = 44, unavailable, online }: { name: string; tint?: string | null; px?: number; unavailable?: boolean; online?: boolean }) {
   const { c } = useTheme();
   return (
     <View style={{ width: px, height: px, borderRadius: px / 2, backgroundColor: unavailable ? c.surfaceAlt : (tint ?? c.accentSoft), alignItems: "center", justifyContent: "center" }}>
       <T v={px > 40 ? "title" : "bodySm"} color={unavailable ? c.textMuted : c.text}>{(name[0] ?? "?").toUpperCase()}</T>
+      {online ? <View accessibilityLabel="online" style={{ position: "absolute", right: 0, bottom: 0, width: Math.max(10, px * 0.28), height: Math.max(10, px * 0.28), borderRadius: 99, backgroundColor: c.success, borderWidth: 2, borderColor: c.bg }} /> : null}
     </View>
   );
 }

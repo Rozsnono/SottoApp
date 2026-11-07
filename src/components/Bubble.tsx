@@ -12,6 +12,7 @@ import { markRead } from "@/state/chat";
 import type { ReactionSummary } from "@/lib/events";
 import { reveal, revealed } from "@/state/reveal";
 import { useStore } from "@/lib/store";
+import { clock } from "@/lib/time";
 
 function Receipt({ status }: { status: Msg["status"] }) {
   const { c } = useTheme();
@@ -39,7 +40,7 @@ function MediaTile({ m, onOpen, onLongPress, outColor }: { m: Msg; onOpen: () =>
   );
 }
 
-export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, reactions, showReactButton, showReceipt, replyName, onLongPress, onReactPress, onReply, onQuotePress, onOpenMedia, onRetry }: { m: Msg; tint: string | null; outColor?: string; reactions?: ReactionSummary[]; showReactButton?: boolean; showReceipt: boolean; replyName?: string; onLongPress: (m: Msg) => void; onReactPress: (m: Msg) => void; onReply: (m: Msg) => void; onQuotePress: (id: string) => void; onOpenMedia: (m: Msg) => void; onRetry: (m: Msg) => void }) {
+export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, reactions, showReactButton, showReceipt, replyName, onLongPress, onReactPress, onReply, onQuotePress, onOpenMedia, onRetry, infoOpen, onTap }: { m: Msg; infoOpen?: boolean; onTap?: (m: Msg) => void; tint: string | null; outColor?: string; reactions?: ReactionSummary[]; showReactButton?: boolean; showReceipt: boolean; replyName?: string; onLongPress: (m: Msg) => void; onReactPress: (m: Msg) => void; onReply: (m: Msg) => void; onQuotePress: (id: string) => void; onOpenMedia: (m: Msg) => void; onRetry: (m: Msg) => void }) {
   const { c } = useTheme();
   const { t } = useTranslation();
   const reduce = useReducedMotion();
@@ -97,7 +98,7 @@ export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, re
       <RNAnimated.View {...pan.panHandlers} style={{ transform: [{ translateX: dx }], maxWidth: "100%", alignItems: m.mine ? "flex-end" : "flex-start" }}>
         <View style={{ position: "absolute", top: 0, bottom: 0, [m.mine ? "right" : "left"]: -44, justifyContent: "center" }}><Reply size={size.icon} color={c.textMuted} /></View>
         <View style={{ flexDirection: m.mine ? "row-reverse" : "row", alignItems: "center", gap: 4 }}>
-          <Pressable onLongPress={() => onLongPress(m)} delayLongPress={350} style={{ maxWidth: "78%" }}>
+          <Pressable onPress={() => onTap?.(m)} onLongPress={() => onLongPress(m)} delayLongPress={350} style={{ maxWidth: "78%" }}>
             {quote ? (
               <Pressable accessibilityRole="button" accessibilityLabel={t("chat.reply")} onPress={() => onQuotePress(quote.id)} style={{ borderLeftWidth: 3, borderLeftColor: c.accent, backgroundColor: c.surfaceAlt, borderRadius: radius.md, paddingHorizontal: space[2], paddingVertical: 4, marginBottom: 2, maxWidth: 220 }}>
                 <T v="caption" muted>{replyName}</T>
@@ -123,7 +124,13 @@ export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, re
           ))}
         </View>
       ) : null}
-      {m.mine && (showReceipt || m.status === "failed" || m.status === "pending") ? (
+      {infoOpen && m.status !== "pending" && m.status !== "failed" ? (
+        <View style={{ marginTop: 2, flexDirection: "row", alignItems: "center", gap: 4 }}>
+          {m.mine ? <Receipt status={m.status} /> : null}
+          <T v="caption" muted>{m.mine ? (m.status === "read" && m.readAt ? t("chat.readAt", { time: clock(m.readAt) }) : t("chat.sentAt", { time: clock(m.createdAt) })) : clock(m.createdAt)}</T>
+        </View>
+      ) : null}
+      {m.mine && !infoOpen && (showReceipt || m.status === "failed" || m.status === "pending") ? (
         <Pressable disabled={m.status !== "failed"} onPress={() => onRetry(m)} accessibilityRole="button" accessibilityLabel={m.status === "failed" ? t("chat.retry") : undefined} style={{ marginTop: 2, flexDirection: "row", alignItems: "center", gap: 4 }}>
           <Receipt status={m.status} />
         </Pressable>

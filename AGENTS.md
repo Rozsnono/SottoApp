@@ -64,3 +64,6 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Értesítések (1.2.1)
 `src/services/notify.ts`: a chat motor `setIncomingHandler` hookján át kap eseményt (új üzenet, új ismerős-kérés). Előtérben toast, háttérben helyi értesítés; némított és éppen megnyitott chat kimarad. Háttérben a lekérdezés nem megbízható: távoli push-hoz EAS projectId + FCM kulcs kell. Skeleton: `Skeleton`/`SkeletonRows` (ui.tsx).
+
+## Aktivitás és üzenet-infó (1.3.0)
+`chat.activity` (refreshActivity, kb. 16 mp-enként), `Msg.readAt` a szinkron visszaigazolásából; `lib/time.ts` (clock, activityText). Főoldal: ActiveStrip + zöld pont a Monogramon. Üzenetre koppintás = idő sor.
