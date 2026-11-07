@@ -1,15 +1,16 @@
 /** Fiókbeállítások: felhasználónév, kereshetőség, ki jelölhet ismerősnek, jelszócsere, fióktörlés. */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, Switch, View } from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as LocalAuthentication from "expo-local-authentication";
-import { Activity, ChevronLeft, Copy, EyeOff, Globe, KeyRound, Lock, Trash2, User, Users } from "lucide-react-native";
+import { Activity, ChevronLeft, Copy, QrCode, EyeOff, Globe, KeyRound, Lock, Trash2, User, Users } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, IconButton, Kav, ListItem, Screen, SegmentedIcons, T, TextField } from "@/components/ui";
 import { api } from "@/lib/api";
 import { errorText } from "@/lib/errors";
 import { PasswordSchema } from "@/protocol/schemas";
+import { TransferQr } from "@/components/TransferQr";
 import { savedRecoveryCode } from "@/state/session";
 import { lock } from "@/state/lock";
 import { size, space, useTheme } from "@/theme";
@@ -28,6 +29,8 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
+  const [qr, setQr] = useState(false);
+  const hideQr = useCallback(() => setQr(false), []);
   const fail = toast.fail;
 
   useEffect(() => { api<Settings>("/api/account/settings").then(setS).catch(fail); }, [fail]);
@@ -41,7 +44,7 @@ export default function AccountSettings() {
 
   // A helyreállító kód megtekintése: ha van biometrikus zár, előbb azzal kell hitelesíteni.
   const showCode = async () => {
-    if (code) return setCode(null);
+    if (code) { setQr(false); return setCode(null); }
     const saved = await savedRecoveryCode();
     if (!saved) return toast.info(t("recovery.notSaved"));
     if (lock.get().available) {
@@ -89,8 +92,10 @@ export default function AccountSettings() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: c.surface, borderRadius: 16, padding: space[4], borderWidth: 1, borderColor: c.border }}>
             <T v="mono" style={{ flex: 1 }} selectable>{code}</T>
             <IconButton icon={Copy} label={t("common.copy")} onPress={() => void Clipboard.setStringAsync(code)} />
+            <IconButton icon={QrCode} label={t("settings.transferShow")} onPress={() => setQr((v) => !v)} />
           </View>
         ) : null}
+        {code && qr ? <TransferQr code={code} onHide={hideQr} /> : null}
         <View style={{ gap: space[3] }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}><KeyRound size={size.icon} color={c.textMuted} /><T v="title">{t("settings.changePassword")}</T></View>
           <TextField label={t("settings.currentPassword")} icon={Lock} secure value={cur} onChangeText={setCur} />

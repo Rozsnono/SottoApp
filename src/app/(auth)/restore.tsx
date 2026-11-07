@@ -1,7 +1,8 @@
 /** Új eszközön a helyreállító kód megadása: a kulcsmentés visszafejtése a készüléken (a szerver nem látja a kódot). */
 import { useState } from "react";
 import { View } from "react-native";
-import { ArrowRight, KeyRound, LogOut } from "lucide-react-native";
+import { router } from "expo-router";
+import { ArrowRight, KeyRound, LogOut, ScanLine } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, Kav, Screen, T, TextField } from "@/components/ui";
 import { logout, restoreKeys } from "@/state/session";
@@ -41,6 +42,7 @@ export default function Restore() {
       </View>
       <TextField label={t("recovery.title")} icon={KeyRound} value={code} onChangeText={setCode} autoCapitalize="characters" ok={valid} error={err} onSubmitEditing={submit} />
       <View style={{ flex: 1, justifyContent: "flex-end", gap: space[3] }}>
+        <Button icon={ScanLine} variant="secondary" title={t("settings.transferScan")} onPress={() => router.push("/scan-transfer")} />
         <Button icon={ArrowRight} label={t("common.next")} onPress={submit} loading={busy} disabled={!valid} />
         <Button icon={LogOut} variant="ghost" title={t("auth.logout")} onPress={() => void logout()} />
       </View>

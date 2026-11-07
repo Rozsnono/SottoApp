@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { BellOff, Check, Trash2, CheckCheck, EyeOff, Image as ImageIcon, Lock, MessageCircle, Search, ServerOff, SquarePen, Video, WifiOff, X } from "lucide-react-native";
+import { BellOff, Check, Trash2, CheckCheck, EyeOff, Image as ImageIcon, Lock, Mic, MessageCircle, Search, ServerOff, SquarePen, Video, WifiOff, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Banner, EmptyState, IconButton, ListItem, Monogram, Screen, SkeletonRows, T } from "@/components/ui";
 import { chat, clearConversation, displayName, isMuted, loadPrefs, pollOnce, refreshActivity, refreshLists, type Conv, type Msg } from "@/state/chat";
@@ -14,6 +14,7 @@ import { confirmDialog } from "@/state/dialog";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useStore } from "@/lib/store";
 import { clock } from "@/lib/time";
+import { withEdits } from "@/lib/events";
 import { radius, size, space, useTheme } from "@/theme";
 
 /** Előnézet: szöveg (saját üzenetnél „Te: ”), média/rejtett/lezárt = ikon. Olvasatlanul félkövér. */
@@ -24,6 +25,7 @@ function Preview({ m, bold }: { m: Msg | undefined; bold?: boolean }) {
   if (m.broken || m.forged) return <Lock size={14} color={c.textMuted} />;
   if (m.type === "image") return <ImageIcon size={14} color={c.textMuted} />;
   if (m.type === "video") return <Video size={14} color={c.textMuted} />;
+  if (m.type === "audio") return <Mic size={14} color={c.textMuted} />;
   if (m.payload?.hidden && !m.mine) return <EyeOff size={14} color={c.textMuted} />;
   return <T v="bodySm" muted={!bold} numberOfLines={1} style={[{ flexShrink: 1 }, bold ? { fontWeight: "700", color: c.text } : null]}>{m.mine ? `${t("chat.you")}: ` : ""}{m.payload?.text}</T>;
 }
@@ -36,7 +38,7 @@ function Row({ conv }: { conv: Conv }) {
   const readIds = useStore(chat, (s) => s.readIds);
   const online = useStore(chat, (s) => !!s.activity[conv.other.id]?.online);
   useEffect(() => { void loadPrefs(conv.other.id); }, [conv.other.id]);
-  const last = list?.findLast((m) => m.type !== "event");
+  const last = useMemo(() => withEdits(list ?? []).findLast((m) => m.type !== "event"), [list]);
   const unread = (list ?? []).filter((m) => !m.mine && m.type !== "event" && !readIds[m.id]).length;
   const name = conv.available ? displayName(conv, prefs) : t("chats.unavailable");
   const muted = isMuted(conv);

@@ -46,3 +46,8 @@ example
 .env
 .env.local
 !.env.example
+
+# Firebase (titok/környezetfüggő; soha nem kerül gitbe)
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json

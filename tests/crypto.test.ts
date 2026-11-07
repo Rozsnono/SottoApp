@@ -6,9 +6,10 @@ import { buildOutgoing, openWire, verifyWire, type WireMessage } from "@/crypto/
 import { decryptPrefs, encryptPrefs } from "@/crypto/prefs";
 import { decryptBuffer, encryptBuffer, encryptedSize, STREAM_CHUNK } from "@/crypto/stream";
 import { SendMessageBodySchema } from "@/protocol/schemas";
+import { parseTransferPayload, transferPayload } from "@/crypto/transfer";
 import { parseSnPayload, safetyNumber, snPayload } from "@/crypto/safety";
 import makeQr from "qrcode-generator";
-import { currentTheme, reactionMap, type EventMsg } from "@/lib/events";
+import { currentTheme, currentTtl, editMap, isExpired, openedSet, reactionMap, withEdits, type EventMsg } from "@/lib/events";
 
 describe("helyreállító kód", () => {
   it("32 jegy, normalizálás és levezetés determinisztikus", () => {
@@ -163,5 +164,41 @@ describe("biztonsági szám QR", () => {
     qr.addData(snPayload("1".repeat(30)));
     qr.make();
     expect(qr.getModuleCount()).toBeGreaterThanOrEqual(21);
+  });
+});
+
+describe("szerkesztés, eltűnés, egyszeri média (események)", () => {
+  const msg = (id: string, sender: string, mine: boolean, seq: number, payload: EventMsg["payload"], type = "text"): EventMsg => ({ id, type, senderId: sender, mine, seq, createdAt: seq * 1000, payload });
+  const ev = (id: string, sender: string, seq: number, event: NonNullable<EventMsg["payload"]>["event"]) => msg(id, sender, sender === "me", seq, { event }, "event");
+
+  it("szerkesztés: csak az eredeti feladóé érvényes, a legutóbbi nyer", () => {
+    const list = [msg("m1", "me", true, 1, { text: "régi" }), ev("e1", "me", 2, { kind: "edit", target: "m1", text: "új" }), ev("e2", "other", 3, { kind: "edit", target: "m1", text: "hamis" })];
+    expect(editMap(list)).toEqual({ m1: "új" });
+    const out = withEdits(list);
+    expect(out[0].payload?.text).toBe("új");
+    expect(out[0].edited).toBe(true);
+    expect(list[0].payload?.text).toBe("régi"); // a bemenet érintetlen
+  });
+  it("eltűnés: a legutóbbi beállítás nyer, lejárat a létrehozástól", () => {
+    expect(currentTtl([])).toBeNull();
+    expect(currentTtl([ev("t1", "me", 1, { kind: "ttl", ms: 3600_000 }), ev("t2", "other", 2, { kind: "ttl", ms: null })])).toBeNull();
+    expect(currentTtl([ev("t1", "me", 1, { kind: "ttl", ms: 3600_000 })])).toBe(3600_000);
+    expect(isExpired({ createdAt: 0, payload: { ttl: 1000 } }, 999)).toBe(false);
+    expect(isExpired({ createdAt: 0, payload: { ttl: 1000 } }, 1000)).toBe(true);
+    expect(isExpired({ createdAt: 0, payload: {} }, 1e12)).toBe(false);
+  });
+  it("opened: csak a másik fél jelzése számít", () => {
+    const list = [msg("m1", "me", true, 1, { text: "" }, "image"), ev("o1", "me", 2, { kind: "opened", target: "m1" })];
+    expect(openedSet(list).size).toBe(0);
+    expect(openedSet([...list, ev("o2", "other", 3, { kind: "opened", target: "m1" })]).has("m1")).toBe(true);
+  });
+});
+
+describe("fiók-áthelyezés QR", () => {
+  it("a helyreállító kód oda-vissza, idegen szöveg és hibás kód elutasítva", () => {
+    const code = generateRecoveryCode();
+    expect(parseTransferPayload(transferPayload(code))).toBe(normalizeRecoveryCode(code));
+    expect(parseTransferPayload("https://example.com")).toBeNull();
+    expect(parseTransferPayload("sotto:xfer1:ROVID")).toBeNull();
   });
 });

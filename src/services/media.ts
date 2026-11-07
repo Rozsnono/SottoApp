@@ -84,7 +84,7 @@ export interface Uploaded {
  * Egy helyi fájl (kép/videó) titkosítása chunkonként és feltöltése. A memóriában egyszerre csak egy chunk él.
  * @throws ApiError(PAYLOAD_TOO_LARGE) ha a titkosított méret meghaladja a protokoll-korlátot.
  */
-export async function encryptAndUpload(srcUri: string, kind: "image" | "video", meta: { mime: string; width?: number; height?: number; durationMs?: number }, onProgress?: (p: number) => void): Promise<Uploaded> {
+export async function encryptAndUpload(srcUri: string, kind: "image" | "video" | "audio", meta: { mime: string; width?: number; height?: number; durationMs?: number }, onProgress?: (p: number) => void): Promise<Uploaded> {
   const c = await getMediaConfig();
   const src = new File(srcUri);
   const plainSize = src.size ?? 0;

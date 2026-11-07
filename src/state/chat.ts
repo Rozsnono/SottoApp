@@ -14,6 +14,7 @@ import { buildOutgoing, openWire, verifyWire, type ChatEvent, type MessageType, 
 import { decryptPrefs, encryptPrefs, type ContactPrefs } from "@/crypto/prefs";
 import { dropMediaConfig, encryptAndUpload, purgeTemp, releaseCapture } from "@/services/media";
 import { loadOutbox, saveOutbox, type OutboxEntry } from "@/lib/outbox";
+import { currentTtl, isExpired } from "@/lib/events";
 import { MAX_TEXT_CIPHERTEXT_CHARS, type REPORT_REASONS } from "@/protocol/constants";
 import { sealForPublicKey } from "@/protocol/wrap";
 
@@ -44,6 +45,8 @@ export interface Msg {
   createdAt: number;
   /** Mikor olvasta el a másik fél (saját üzeneteknél, ha a szerver visszaigazolta). */
   readAt?: number;
+  /** Szerkesztett szöveg (a megjelenítéshez; a `withEdits` állítja). */
+  edited?: boolean;
   mediaRef: string | null;
   /** Helyi (küldés előtti) forrás-URI a feltöltés újrapróbálásához. */
   localUri?: string;
@@ -66,17 +69,20 @@ interface ChatState {
   verified: Record<string, string>;
   /** convId → törölt szekvencia-határ (lásd Meta.cleared). */
   cleared: Record<string, number>;
+  /** Megnyitott egyszeri médiák (üzenet-azonosító). */
+  consumed: Record<string, true>;
   /** userId → aktivitás (ismerősök; csak ha mindkét fél megosztja). `online`: a lekéréskor aktív volt. */
   activity: Record<string, { online: boolean; at: number }>;
 }
 
-export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, activity: {} });
+export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {} });
 
 /** A szerverről kapott (titkosított) üzenetek – a jelentéshez újra kinyitjuk a kulcsot; nyílt tartalmat nem tartalmaz. */
 const wires = new Map<string, WireMessage>();
-let meta: Meta = { readIds: [], pins: {}, verified: {}, cleared: {} };
+let meta: Meta = { readIds: [], pins: {}, verified: {}, cleared: {}, consumed: [] };
 let cursor = "0";
 let timer: ReturnType<typeof setInterval> | null = null;
+let sweeper: ReturnType<typeof setInterval> | null = null;
 let polling = false;
 let paused = false;
 /** Zárolt állapotban nem szinkronizálunk (nyílt tartalom nem kerülhet vissza a memóriába). */
@@ -103,31 +109,35 @@ function putMessages(convId: string, upd: (list: Msg[]) => Msg[]) {
 export async function startEngine(): Promise<void> {
   if (!session.get().keys) return;
   meta = await loadMeta();
-  chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified }, cleared: { ...meta.cleared } });
+  chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified }, cleared: { ...meta.cleared }, consumed: Object.fromEntries(meta.consumed.map((i) => [i, true as const])) });
   await refreshLists();
   await pollOnce(true);
   void restoreOutbox();
   void refreshActivity();
   chat.set({ ready: true });
   timer ??= setInterval(() => void pollOnce(), SYNC_INTERVAL_MS);
+  sweeper ??= setInterval(sweepExpired, 15_000);
   appSub ??= AppState.addEventListener("change", (st) => { if (st === "active") void pollOnce(); });
 }
 
 export function stopEngine(): void {
   if (timer) clearInterval(timer);
   timer = null;
+  if (sweeper) clearInterval(sweeper);
+  sweeper = null;
   appSub?.remove();
   appSub = null;
   cursor = "0";
   wires.clear();
   // A törölt beszélgetések határa kilépéskor is megmarad (különben újra belépve visszatöltődne az előzmény).
   const keepCleared = meta.cleared;
-  meta = { readIds: [], pins: {}, verified: {}, cleared: {} };
+  const keepConsumed = meta.consumed;
+  meta = { readIds: [], pins: {}, verified: {}, cleared: {}, consumed: [] };
   wipeMeta();
-  if (Object.keys(keepCleared).length) saveMeta({ ...meta, cleared: keepCleared });
+  if (Object.keys(keepCleared).length || keepConsumed.length) saveMeta({ ...meta, cleared: keepCleared, consumed: keepConsumed });
   purgeTemp();
   dropMediaConfig();
-  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, activity: {} });
+  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {} });
 }
 setSessionEndedHandler(stopEngine);
 
@@ -301,6 +311,7 @@ function applySync(r: SyncResp, initial: boolean) {
       payload: opened.ok ? opened.payload : null, broken: !opened.ok, forged,
       status: existing?.status === "read" ? "read" : "sent", seq: w.seq, createdAt: Date.parse(w.createdAt), mediaRef: w.mediaRef,
     };
+    if (isExpired(msg, Date.now())) continue; // lejárt eltűnő üzenet: nem töltjük vissza
     putMessages(w.conversationId, (l) => [...l.filter((m) => m.id !== w.id && m.clientMessageId !== w.clientMessageId), msg]);
     // Értesítés: csak friss, kapott, látható üzenetről; a kezdeti (teljes) szinkron és a némított chat kimarad.
     const seen = activeConv === w.conversationId && AppState.currentState === "active";
@@ -390,10 +401,47 @@ export async function sendText(convId: string, text: string, hidden: boolean, re
   const t = text.trim();
   if (!t) return;
   if (t.length > MAX_TEXT_CIPHERTEXT_CHARS / 2) throw new Error("tooLong");
-  const m = newPending(convId, "text", { v: 1, text: t, ...(hidden ? { hidden: true } : {}), ...(reply ? { reply } : {}) });
+  const m = newPending(convId, "text", { v: 1, text: t, ...(hidden ? { hidden: true } : {}), ...(reply ? { reply } : {}), ...ttlFor(convId) });
   putMessages(convId, (l) => [...l, m]);
   syncOutbox(); // elküldés előtt mentjük: ha az app közben bezárul, nem vész el
   await deliver(m).catch(() => undefined);
+}
+
+/** Az eltűnő üzenet beállítás a kimenő üzenet hasznos terhére (üres, ha ki van kapcsolva). */
+function ttlFor(convId: string): { ttl?: number } {
+  const ms = currentTtl(chat.get().messages[convId] ?? []);
+  return ms ? { ttl: ms } : {};
+}
+
+/** Üzenet szerkesztése (csak saját szöveges üzenet; a másik fél is látja, „szerkesztve” jelzéssel). */
+export async function sendEdit(convId: string, target: string, text: string): Promise<void> {
+  const t = text.trim();
+  if (!t) return;
+  if (t.length > MAX_TEXT_CIPHERTEXT_CHARS / 2) throw new Error("tooLong");
+  await sendEvent(convId, { kind: "edit", target, text: t });
+}
+
+/**
+ * Egyszeri média „elfogyasztása”: helyben megjegyezzük (többé nem nyitható meg), és jelezzük a feladónak.
+ * A szerveren a titkosított példány megmarad – a korlátozás kliensoldali (lásd AGENTS.md).
+ */
+export function consumeOnce(m: Msg): void {
+  if (m.mine || chat.get().consumed[m.id]) return;
+  meta.consumed.push(m.id);
+  saveMeta(meta);
+  chat.set((s) => ({ consumed: { ...s.consumed, [m.id]: true } }));
+  sendEvent(m.convId, { kind: "opened", target: m.id }).catch((e) => console.warn("[chat] megnyitás-jelzés sikertelen", e instanceof Error ? e.message : e));
+}
+
+/** Lejárt (eltűnő) üzenetek eltávolítása a memóriából; a sajátokat a szerverről is töröljük (mindkét oldalon eltűnnek). */
+function sweepExpired(): void {
+  const now = Date.now();
+  const gone: Msg[] = [];
+  for (const list of Object.values(chat.get().messages)) for (const m of list) if (m.type !== "event" && isExpired(m, now)) gone.push(m);
+  if (!gone.length) return;
+  const ids = new Set(gone.map((m) => m.id));
+  chat.set((s) => ({ messages: Object.fromEntries(Object.entries(s.messages).map(([cid, l]) => [cid, l.filter((m) => !ids.has(m.id))])) }));
+  for (const m of gone) if (m.mine && m.seq != null) api(`/api/messages/${m.id}`, { method: "DELETE" }).catch((e) => console.warn("[chat] lejárt üzenet szerveres törlése sikertelen", e instanceof Error ? e.message : e));
 }
 
 /** Rendszer-esemény küldése (reakció / témaváltás): titkosított, nincs push, nem jelenik meg buborékként. */
@@ -408,8 +456,8 @@ export async function sendEvent(convId: string, event: ChatEvent): Promise<void>
   }
 }
 
-export async function sendMedia(convId: string, uri: string, kind: "image" | "video", meta2: { mime: string; width?: number; height?: number; durationMs?: number }, hidden: boolean): Promise<void> {
-  const m = newPending(convId, kind, { v: 1, hidden: hidden || undefined, media: { key: "", nonce: "", size: 0, ...meta2 } }, uri);
+export async function sendMedia(convId: string, uri: string, kind: "image" | "video" | "audio", meta2: { mime: string; width?: number; height?: number; durationMs?: number }, hidden: boolean, opts: { group?: string; once?: boolean } = {}): Promise<void> {
+  const m = newPending(convId, kind, { v: 1, hidden: hidden || undefined, ...(opts.group ? { group: opts.group } : {}), ...(opts.once ? { once: true } : {}), ...ttlFor(convId), media: { key: "", nonce: "", size: 0, ...meta2 } }, uri);
   putMessages(convId, (l) => [...l, m]);
   await deliver(m).catch(() => undefined);
 }

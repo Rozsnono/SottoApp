@@ -13,6 +13,7 @@ import type { ReactionSummary } from "@/lib/events";
 import { reveal, revealed } from "@/state/reveal";
 import { useStore } from "@/lib/store";
 import { clock } from "@/lib/time";
+import { AudioTile, MediaGrid, OnceBadge, useSpent } from "@/components/MediaParts";
 
 function Receipt({ status }: { status: Msg["status"] }) {
   const { c } = useTheme();
@@ -26,21 +27,24 @@ function Receipt({ status }: { status: Msg["status"] }) {
 const fmtDuration = (ms?: number) => (ms ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}` : "");
 
 /** Zárt csempe: nincs előnézet; koppintásra teljes képernyős nézet nyílik. */
-function MediaTile({ m, onOpen, onLongPress, outColor }: { m: Msg; onOpen: () => void; onLongPress: () => void; outColor: string }) {
+function MediaTile({ m, onOpen, onLongPress, outColor, openedIds }: { m: Msg; onOpen: () => void; onLongPress: () => void; outColor: string; openedIds?: Set<string> }) {
+  const spent = useSpent(m, openedIds);
+  const once = !!m.payload?.once;
   const { c } = useTheme();
   const { t } = useTranslation();
-  const Icon = m.type === "video" ? Video : ImageIcon;
+  const Icon = spent ? EyeOff : m.type === "video" ? Video : ImageIcon;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={t("chat.openMedia")} onPress={onOpen} onLongPress={onLongPress} delayLongPress={350} style={{ width: 176, aspectRatio: 4 / 5, borderRadius: radius.bubble, backgroundColor: m.mine ? outColor : c.surfaceAlt, alignItems: "center", justifyContent: "center", gap: space[2] }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={t("chat.openMedia")} disabled={spent || (once && m.mine)} onPress={onOpen} onLongPress={onLongPress} delayLongPress={350} style={{ width: 176, aspectRatio: 4 / 5, borderRadius: radius.bubble, backgroundColor: m.mine ? outColor : c.surfaceAlt, alignItems: "center", justifyContent: "center", gap: space[2] }}>
       <Icon size={size.iconLg * 1.5} color={m.mine ? c.onBubbleOut : c.text} />
       {m.type === "video" && m.payload?.media?.durationMs ? <T v="caption" color={m.mine ? c.onBubbleOut : c.text}>{fmtDuration(m.payload.media.durationMs)}</T> : null}
       {m.payload?.hidden ? <EyeOff size={size.iconSm} color={m.mine ? c.onBubbleOut : c.textMuted} style={{ position: "absolute", top: 10, right: 10 }} /> : null}
+      {once ? <OnceBadge color={m.mine ? c.onBubbleOut : c.text} bg="transparent" /> : null}
       {m.status === "pending" && m.progress !== undefined ? <T v="caption" color={m.mine ? c.onBubbleOut : c.text} style={{ position: "absolute", bottom: 10 }}>{Math.round(m.progress * 100)}%</T> : null}
     </Pressable>
   );
 }
 
-export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, reactions, showReactButton, showReceipt, replyName, onLongPress, onReactPress, onReply, onQuotePress, onOpenMedia, onRetry, infoOpen, onTap }: { m: Msg; infoOpen?: boolean; onTap?: (m: Msg) => void; tint: string | null; outColor?: string; reactions?: ReactionSummary[]; showReactButton?: boolean; showReceipt: boolean; replyName?: string; onLongPress: (m: Msg) => void; onReactPress: (m: Msg) => void; onReply: (m: Msg) => void; onQuotePress: (id: string) => void; onOpenMedia: (m: Msg) => void; onRetry: (m: Msg) => void }) {
+export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, reactions, showReactButton, showReceipt, replyName, onLongPress, onReactPress, onReply, onQuotePress, onOpenMedia, onRetry, infoOpen, onTap, group, openedIds }: { m: Msg; group?: Msg[]; openedIds?: Set<string>; infoOpen?: boolean; onTap?: (m: Msg) => void; tint: string | null; outColor?: string; reactions?: ReactionSummary[]; showReactButton?: boolean; showReceipt: boolean; replyName?: string; onLongPress: (m: Msg) => void; onReactPress: (m: Msg) => void; onReply: (m: Msg) => void; onQuotePress: (id: string) => void; onOpenMedia: (m: Msg) => void; onRetry: (m: Msg) => void }) {
   const { c } = useTheme();
   const { t } = useTranslation();
   const reduce = useReducedMotion();
@@ -72,8 +76,12 @@ export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, re
         {m.forged ? <ShieldAlert size={size.icon} color={c.danger} /> : <Lock size={size.icon} color={c.textMuted} />}
       </View>
     );
+  } else if (group && group.length > 1) {
+    body = <MediaGrid items={group} outColor={out} openedIds={openedIds} onOpen={onOpenMedia} onLongPress={onLongPress} />;
+  } else if (m.type === "audio") {
+    body = <AudioTile m={m} outColor={out} onLongPress={onLongPress} />;
   } else if (m.type !== "text") {
-    body = <MediaTile m={m} onOpen={() => onOpenMedia(m)} onLongPress={() => onLongPress(m)} outColor={out} />;
+    body = <MediaTile m={m} onOpen={() => onOpenMedia(m)} onLongPress={() => onLongPress(m)} outColor={out} openedIds={openedIds} />;
   } else if (hiddenCover) {
     // A lefedett szöveg a képernyőolvasónak sem hozzáférhető: csak mozaik + ikon (a hossz sem szivárog: fix szélesség).
     body = (
@@ -88,6 +96,7 @@ export const MessageBubble = memo(function MessageBubble({ m, tint, outColor, re
     body = (
       <Animated.View entering={m.payload?.hidden && !m.mine ? (reduce ? FadeIn.duration(140) : FadeIn.duration(220)) : undefined} style={{ backgroundColor: bg, borderRadius: radius.bubble, [m.mine ? "borderBottomRightRadius" : "borderBottomLeftRadius"]: radius.bubbleTail, paddingHorizontal: space[3], paddingVertical: space[2], maxWidth: "100%" }}>
         <T color={fg}>{m.payload?.text}</T>
+        {m.edited ? <T v="caption" color={fg} style={{ opacity: 0.7, alignSelf: "flex-end" }}>{t("chat.edited")}</T> : null}
         {m.payload?.hidden && m.mine ? <EyeOff size={12} color={fg} style={{ alignSelf: "flex-end", marginTop: 2 }} /> : null}
       </Animated.View>
     );

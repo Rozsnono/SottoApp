@@ -73,3 +73,11 @@ Docs: https://docs.expo.dev/eas/index.md
 - 1.3.3: beszélgetés törlése (jobbra húzás a főoldalon + profil képernyő): helyi, csak ezen az eszközön (Meta.cleared, kilépéskor is megmarad), a másik fél és a szerver példánya érintetlen. Ismerős törlése: jobbra húzás az Ismerősök fülön.
 
 - 1.3.4: Kimenő sor: `lib/outbox.ts` (XChaCha20, HKDF kulcs az idPriv-ből, fiókonként fájl, csak szöveg), `syncOutbox/restoreOutbox/retryFailedText` a chat.ts-ben. QR: payload `sotto:sn1:<30 számjegy>`, egyezés → `setVerified`.
+
+## 1.4.0 – új funkciók (összefoglaló)
+- Események (titkosított `type: event`): reaction, theme, **edit, ttl, opened** (`crypto/message.ts`, `lib/events.ts`: editMap/withEdits/currentTtl/openedSet/isExpired).
+- chat.ts: `sendEdit`, `consumeOnce`, `sweepExpired` (15 mp), `ttlFor`; `sendMedia(..., {group, once})`.
+- UI: `components/MediaParts.tsx` (MiniTile/MediaGrid/AudioTile), `Composer` (hangfelvétel `VoiceBar`, szerkesztő-mód, egyszeri kapcsoló), `viewer.tsx` (lapozás, NoCapture), `settings/icon.tsx`, `TransferQr`, `(auth)/scan-transfer.tsx`.
+- Függőségek: expo-audio, expo-screen-capture, expo-alternate-app-icons (ikon-asset: assets/icons/*, a generáló script nincs a repóban).
+
+- Push: Androidon natív FCM token (`services/push.ts`), `google-services.json` kell a buildhez (gitignore-olt, nem commitolható: API kulcsot tartalmaz).

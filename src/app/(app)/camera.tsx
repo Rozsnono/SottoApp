@@ -17,7 +17,7 @@ import { toast } from "@/state/toast";
 type Captured = { uri: string; kind: "image" | "video"; width?: number; height?: number; durationMs?: number };
 
 export default function CameraScreen() {
-  const { convId } = useLocalSearchParams<{ convId: string }>();
+  const { convId, once } = useLocalSearchParams<{ convId: string; once?: string }>();
   const { t } = useTranslation();
   const ref = useRef<CameraView>(null);
   const [cam, askCam] = useCameraPermissions();
@@ -66,7 +66,7 @@ export default function CameraScreen() {
   const discard = () => { releaseCapture(shot?.uri); setShot(null); };
   const send = (hidden: boolean) => {
     if (!shot) return;
-    sendMedia(convId, shot.uri, shot.kind, { mime: shot.kind === "video" ? "video/mp4" : "image/jpeg", width: shot.width, height: shot.height, durationMs: shot.durationMs }, hidden).catch((e) => toast.fail(e));
+    sendMedia(convId, shot.uri, shot.kind, { mime: shot.kind === "video" ? "video/mp4" : "image/jpeg", width: shot.width, height: shot.height, durationMs: shot.durationMs }, hidden, { once: once === "1" }).catch((e) => toast.fail(e));
     router.back();
   };
 

@@ -13,8 +13,10 @@ export interface Meta {
   verified: Record<string, string>;
   /** Beszélgetés törölve (csak ezen az eszközön): convId → legnagyobb törölt szekvencia; ennél régebbi üzenet nem jelenik meg. */
   cleared: Record<string, number>;
+  /** Már megnyitott egyszeri médiák azonosítói (újra nem nyithatók meg). */
+  consumed: string[];
 }
-const empty = (): Meta => ({ readIds: [], pins: {}, verified: {}, cleared: {} });
+const empty = (): Meta => ({ readIds: [], pins: {}, verified: {}, cleared: {}, consumed: [] });
 const file = () => new File(Paths.document, "sotto-meta.json");
 
 export async function loadMeta(): Promise<Meta> {

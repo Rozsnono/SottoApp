@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { t } from "i18next";
 import { setIncomingHandler, type Incoming } from "@/state/chat";
 import { toast } from "@/state/toast";
+import { getHideSender, loadNotifPrefs } from "@/services/notifyPrefs";
 
 function openChat(data: unknown) {
   const d = (data ?? {}) as { conversationId?: unknown; convId?: unknown };
@@ -20,12 +21,13 @@ function openChat(data: unknown) {
 
 function show(e: Incoming) {
   const body = e.kind === "message" ? t("notify.newMessage") : t("notify.friendRequest");
+  const hide = getHideSender(); // „feladó elrejtése”: a név nem kerül sem a toastba, sem a rendszerértesítésbe
   if (AppState.currentState === "active") {
-    toast.info(`${e.name} · ${body}`);
+    toast.info(hide ? t("notify.newMessage") : `${e.name} · ${body}`);
     return;
   }
   Notifications.scheduleNotificationAsync({
-    content: { title: e.name, body, sound: "default", data: e.kind === "message" ? { conversationId: e.convId } : {} },
+    content: { title: hide ? "Sotto" : e.name, body: hide ? t("notify.newMessage") : body, sound: "default", data: e.kind === "message" ? { conversationId: e.convId } : {} },
     trigger: { channelId: "messages" },
   }).catch((err) => console.warn("[notify] helyi értesítés sikertelen:", err instanceof Error ? err.message : err));
 }
@@ -34,6 +36,7 @@ let sub: Notifications.EventSubscription | null = null;
 
 /** Belépés után hívandó: bekötjük az eseményeket és a koppintás-kezelőt. */
 export function initNotify(): void {
+  void loadNotifPrefs();
   setIncomingHandler(show);
   sub ??= Notifications.addNotificationResponseReceivedListener((r) => openChat(r.notification.request.content.data));
   // Hidegindításkor az értesítésre koppintva nyitott app is a chatre ugorjon.

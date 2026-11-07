@@ -110,7 +110,7 @@ export const SendMessageBodySchema = z
   .object({
     conversationId: ObjectIdStr,
     /** `event`: titkosított rendszer-esemény (reakció, téma) – a szerver nem látja a fajtáját, nincs push. */
-    type: z.enum(["text", "image", "video", "event"]),
+    type: z.enum(["text", "image", "video", "audio", "event"]),
     ciphertext: b64(),
     nonce: b64(24),
     /** Ed25519 aláírás a `messageSignatureInput` felett (64 bájt). */
@@ -134,8 +134,11 @@ export const BlockBodySchema = z.object({ userId: ObjectIdStr });
 export const ConversationPrefBodySchema = z.object({ mutedUntil: z.string().datetime().nullable() });
 export const ContactPrefBodySchema = z.object({ valueEncrypted: b64(), nonce: b64(24) });
 export const PushTokenBodySchema = z.object({
-  pushToken: z.string().regex(/^(Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/).nullable(),
+  /** `null`: token törlése; kihagyva: a token érintetlen marad (pl. csak az értesítés-részletesség változik). */
+  pushToken: z.string().regex(/^(Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/).nullable().optional(),
   notificationsEnabled: z.boolean().optional(),
+  /** `hidden`: a push nem tartalmazza a feladó nevét (csak „Sotto” + általános szöveg). */
+  notificationDetail: z.enum(["name", "hidden"]).optional(),
 });
 
 export const ReportBodySchema = z.object({

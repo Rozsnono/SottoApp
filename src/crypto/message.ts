@@ -15,15 +15,23 @@ export type SendMessageBody = z.input<typeof SendMessageBodySchema>;
 export interface ReplyRef {
   id: string;
   senderId: string;
-  kind: "text" | "image" | "video";
+  kind: "text" | "image" | "video" | "audio";
   hidden?: boolean;
   snippet?: string;
 }
 
-export type MessageType = "text" | "image" | "video" | "event";
+export type MessageType = "text" | "image" | "video" | "audio" | "event";
 
 /** Titkosított rendszer-esemény: reakció egy üzenetre (emoji = null: visszavonás) vagy a beszélgetés témájának váltása. */
-export type ChatEvent = { kind: "reaction"; target: string; emoji: string | null } | { kind: "theme"; theme: string };
+export type ChatEvent =
+  | { kind: "reaction"; target: string; emoji: string | null }
+  | { kind: "theme"; theme: string }
+  /** Üzenet szerkesztése: csak az eredeti feladó eseménye érvényes. */
+  | { kind: "edit"; target: string; text: string }
+  /** Eltűnő üzenetek időtartama a beszélgetésben (ms), `null` = ki. */
+  | { kind: "ttl"; ms: number | null }
+  /** Az egyszer megnyitható média megnyitva (a címzett jelzi a feladónak). */
+  | { kind: "opened"; target: string };
 
 /** A kép/videó fájlkulcsa és leírója – a titkosított üzenet-törzs része (a szerver nem látja). */
 export interface MediaDescriptor {
@@ -50,6 +58,12 @@ export interface Payload {
   event?: ChatEvent;
   /** Válasz egy korábbi üzenetre: az idézett üzenet azonosítója és rövid, titkosítva küldött kivonata. */
   reply?: ReplyRef;
+  /** Több képes küldés: az azonos azonosítójú, egymást követő képek rácsként jelennek meg. */
+  group?: string;
+  /** Egyszer megnyitható média (kép/videó): a címzett egyszer nézheti meg. */
+  once?: boolean;
+  /** Eltűnő üzenet: ennyi ms-ig él a létrehozástól (a küldő állítja be a beszélgetés beállítása szerint). */
+  ttl?: number;
 }
 
 export interface Recipients {

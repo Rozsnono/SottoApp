@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import * as Application from "expo-application";
 import { ScrollView, Switch, View } from "react-native";
 import { router } from "expo-router";
-import { Bell, Fingerprint, Globe, LogOut, ScanFace, Smartphone, UserCog, UserX } from "lucide-react-native";
+import { Bell, Fingerprint, Globe, LogOut, ScanFace, Smartphone, UserCog, UserX, EyeOff, AppWindow } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { ListItem, Screen, T } from "@/components/ui";
 import { setLang } from "@/i18n";
 import { lock, setLockEnabled } from "@/state/lock";
 import { logout, session } from "@/state/session";
 import { disablePush, registerPush } from "@/services/push";
+import { getHideSender, setHideSender } from "@/services/notifyPrefs";
 import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { size, space, useTheme } from "@/theme";
@@ -21,6 +22,7 @@ export default function Settings() {
   const me = useStore(session, (s) => s.me);
   const lk = useStore(lock, (s) => s);
   const [notif, setNotif] = useState(true);
+  const [hideSender, setHide] = useState(() => getHideSender());
   const [apiVersion, setApiVersion] = useState<string | null>(null);
   useEffect(() => { api<{ version: string }>("/api/version", { auth: false }).then((r) => setApiVersion(r.version)).catch(() => setApiVersion(null)); }, []);
   const BioIcon = lk.mode === "face" ? ScanFace : Fingerprint;
@@ -32,6 +34,8 @@ export default function Settings() {
         <ListItem label={t("settings.account")} left={ic(UserCog)} title={<T v="title">{t("settings.account")}</T>} onPress={() => router.push("/settings/profile")} />
         <ListItem label={t("settings.language")} left={ic(Globe)} title={<T v="title">{t("settings.language")}</T>} onPress={() => void setLang(i18n.language === "hu" ? "en" : "hu")} right={<T v="title" color={c.accent}>{i18n.language.toUpperCase()}</T>} />
         <ListItem label={t("settings.notifications")} left={ic(Bell)} title={<T v="title">{t("settings.notifications")}</T>} right={<Switch accessibilityLabel={t("settings.notifications")} value={notif} onValueChange={(v) => { setNotif(v); void (v ? registerPush() : disablePush()); }} />} />
+        <ListItem label={t("settings.hideSender")} left={ic(EyeOff)} title={<T v="title">{t("settings.hideSender")}</T>} right={<Switch accessibilityLabel={t("settings.hideSender")} value={hideSender} onValueChange={(v) => { setHide(v); void setHideSender(v); }} />} />
+        <ListItem label={t("settings.appIcon")} left={ic(AppWindow)} title={<T v="title">{t("settings.appIcon")}</T>} onPress={() => router.push("/settings/icon")} />
         <ListItem label={t("settings.biometric")} left={<BioIcon size={size.icon} color={c.text} />} title={<T v="title">{t("settings.biometric")}</T>}
           right={<Switch accessibilityLabel={t("settings.biometric")} disabled={!lk.available} value={lk.enabled} onValueChange={(v) => void setLockEnabled(v)} />} />
         <ListItem label={t("settings.devices")} left={ic(Smartphone)} title={<T v="title">{t("settings.devices")}</T>} onPress={() => router.push("/settings/devices")} />
