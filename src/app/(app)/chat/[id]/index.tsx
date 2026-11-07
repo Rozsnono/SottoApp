@@ -9,7 +9,7 @@ import { Ban, BellOff, Bell, Check, ChevronLeft, Copy, Eye, Flag, Lock, MoreHori
 import { useTranslation } from "react-i18next";
 import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/components/ui";
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
-import { activityText } from "@/lib/time";
+import { activityText, dayLabel, differentDay } from "@/lib/time";
 import { Composer } from "@/components/Composer";
 import { acceptKeyChange, chat, setActiveConv, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
 import { session } from "@/state/session";
@@ -147,13 +147,13 @@ export default function ChatScreen() {
         </View>
       ) : null}
       <FlatList ref={listRef} inverted data={data} extraData={infoId} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
-        renderItem={({ item }) => isThemeEvent(item) ? (
+        renderItem={({ item, index }) => <>{index === data.length - 1 || differentDay(item.createdAt, data[index + 1].createdAt) ? <View style={{ alignItems: "center", paddingVertical: space[2] }}><T v="caption" muted>{dayLabel(item.createdAt)}</T></View> : null}{isThemeEvent(item) ? (
           <SystemNotice text={noticeText(item)} />
         ) : (
           <MessageBubble m={item} tint={tint(prefs[conv.other.id]?.color as never)} outColor={theme.out} reactions={reactions[item.id]} showReactButton={!item.mine && item.id === lastMsgId} replyName={item.payload?.reply ? nameOf(item.payload.reply.senderId) : undefined} onReactPress={setReactPick} onReply={startReply} onQuotePress={scrollToMsg} showReceipt={item.id === lastMineId} onLongPress={setMenu}
             onOpenMedia={(m) => router.push({ pathname: "/viewer", params: { convId: id, id: m.id } })}
             infoOpen={infoId === item.id} onTap={(m) => setInfoId((x) => (x === m.id ? null : m.id))} onRetry={(m) => showDialog({ title: t("chat.failed"), icon: RotateCw, actions: [{ label: t("common.cancel"), style: "cancel" }, { label: t("common.delete"), style: "destructive", onPress: () => discardFailed(id, m.id) }, { label: t("chat.retry"), onPress: () => void retrySend(id, m.id) }] })} />
-        )} />
+        )}</>} />
       {conv.archived || !conv.available ? (
         <View style={{ padding: space[3] }}><Banner icon={Lock} tone="neutral" text={t("chat.archived")} /></View>
       ) : (

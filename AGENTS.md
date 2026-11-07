@@ -67,3 +67,5 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Aktivitás és üzenet-infó (1.3.0)
 `chat.activity` (refreshActivity, kb. 16 mp-enként), `Msg.readAt` a szinkron visszaigazolásából; `lib/time.ts` (clock, activityText). Főoldal: ActiveStrip + zöld pont a Monogramon. Üzenetre koppintás = idő sor.
+
+- 1.3.1: napválasztó felirat a chatben (Ma / Tegnap / dátum), `lib/time.ts` dayLabel.

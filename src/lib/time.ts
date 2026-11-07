@@ -10,6 +10,20 @@ export function clock(ts: number): string {
   return `${d.toLocaleDateString(loc, { month: "short", day: "numeric" })} ${time}`;
 }
 
+/** Napválasztó felirat: Ma / Tegnap / dátum (az év csak más évnél). */
+export function dayLabel(ts: number): string {
+  const d = new Date(ts);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86_400_000);
+  if (diff === 0) return i18n.t("day.today");
+  if (diff === 1) return i18n.t("day.yesterday");
+  const loc = i18n.language === "hu" ? "hu-HU" : "en-GB";
+  return d.toLocaleDateString(loc, { year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric", month: "long", day: "numeric" });
+}
+
+/** Két időbélyeg különböző naptári napra esik-e. */
+export const differentDay = (a: number, b: number): boolean => new Date(a).toDateString() !== new Date(b).toDateString();
+
 /** „Aktív most” / „Aktív N perce|órája”; 24 óránál régebbi aktivitást nem mutatunk (üres szöveg). */
 export function activityText(a: { online: boolean; at: number } | undefined): string {
   if (!a) return "";
