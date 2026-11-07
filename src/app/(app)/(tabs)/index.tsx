@@ -5,11 +5,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { BellOff, Check, CheckCheck, EyeOff, Image as ImageIcon, Lock, MessageCircle, Search, ServerOff, SquarePen, Video, WifiOff, X } from "lucide-react-native";
+import { BellOff, Check, Trash2, CheckCheck, EyeOff, Image as ImageIcon, Lock, MessageCircle, Search, ServerOff, SquarePen, Video, WifiOff, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Banner, EmptyState, IconButton, ListItem, Monogram, Screen, SkeletonRows, T } from "@/components/ui";
-import { chat, displayName, isMuted, loadPrefs, pollOnce, refreshActivity, refreshLists, type Conv, type Msg } from "@/state/chat";
+import { chat, clearConversation, displayName, isMuted, loadPrefs, pollOnce, refreshActivity, refreshLists, type Conv, type Msg } from "@/state/chat";
 import { session } from "@/state/session";
+import { confirmDialog } from "@/state/dialog";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useStore } from "@/lib/store";
 import { clock } from "@/lib/time";
 import { radius, size, space, useTheme } from "@/theme";
@@ -38,7 +40,18 @@ function Row({ conv }: { conv: Conv }) {
   const unread = (list ?? []).filter((m) => !m.mine && m.type !== "event" && !readIds[m.id]).length;
   const name = conv.available ? displayName(conv, prefs) : t("chats.unavailable");
   const muted = isMuted(conv);
+  const askDelete = (close: () => void) => {
+    close();
+    confirmDialog({ title: t("chats.deleteTitle"), message: t("chats.deleteConfirm"), icon: Trash2, destructive: true, confirmLabel: t("common.delete"), onConfirm: () => clearConversation(conv.id) });
+  };
+  // Jobbra húzásra a bal oldalon megjelenik a törlés ikon; megerősítés után törlődik.
   return (
+    <ReanimatedSwipeable overshootLeft={false} renderLeftActions={(_p, _t, m) => (
+      <Pressable accessibilityRole="button" accessibilityLabel={t("common.delete")} onPress={() => askDelete(() => m.close())} style={{ width: 84, backgroundColor: c.danger, alignItems: "center", justifyContent: "center" }}>
+        <Trash2 size={size.icon} color="#fff" />
+      </Pressable>
+    )}>
+    <View style={{ backgroundColor: c.bg }}>
     <ListItem label={name} onPress={() => router.push({ pathname: "/chat/[id]", params: { id: conv.id } })}
       left={<Monogram name={name} px={56} tint={tint(prefs[conv.other.id]?.color as never)} unavailable={!conv.available} online={online} />}
       title={
@@ -57,6 +70,8 @@ function Row({ conv }: { conv: Conv }) {
             : last?.mine ? (last.status === "read" ? <CheckCheck size={16} color={c.accent} /> : last.status === "sent" ? <Check size={16} color={c.textMuted} /> : null) : null}
         </View>
       } />
+    </View>
+    </ReanimatedSwipeable>
   );
 }
 
@@ -93,6 +108,7 @@ export default function Chats() {
   const ready = useStore(chat, (s) => s.ready);
   const messages = useStore(chat, (s) => s.messages);
   const prefs = useStore(chat, (s) => s.prefs);
+  const cleared = useStore(chat, (s) => s.cleared);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState("");
   const onRefresh = useCallback(async () => {
@@ -102,8 +118,8 @@ export default function Chats() {
   const sorted = useMemo(() => {
     const ts = (cv: Conv) => messages[cv.id]?.findLast((m) => m.type !== "event")?.createdAt ?? 0;
     const needle = q.trim().toLowerCase();
-    return [...convs].filter((cv) => !needle || displayName(cv, prefs).toLowerCase().includes(needle)).sort((a, b) => ts(b) - ts(a));
-  }, [convs, messages, prefs, q]);
+    return [...convs].filter((cv) => !(cleared[cv.id] !== undefined && !messages[cv.id]?.length)).filter((cv) => !needle || displayName(cv, prefs).toLowerCase().includes(needle)).sort((a, b) => ts(b) - ts(a));
+  }, [convs, messages, prefs, q, cleared]);
   return (
     <Screen edges={["top"]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: space[4], paddingTop: space[2] }}>

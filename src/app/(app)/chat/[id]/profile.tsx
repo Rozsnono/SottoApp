@@ -2,10 +2,10 @@
 import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ban, Bell, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, TriangleAlert, UserMinus } from "lucide-react-native";
+import { Ban, Bell, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, Trash2, TriangleAlert, UserMinus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, ColorPicker, IconButton, Kav, ListItem, Monogram, Screen, T, TextField } from "@/components/ui";
-import { blockUser, chat, displayName, loadPrefs, removeFriend, savePrefs, isMuted, setMute, setVerified } from "@/state/chat";
+import { blockUser, chat, clearConversation, displayName, loadPrefs, removeFriend, savePrefs, isMuted, setMute, setVerified } from "@/state/chat";
 import { session } from "@/state/session";
 import { safetyNumber } from "@/crypto/safety";
 import { useStore } from "@/lib/store";
@@ -64,6 +64,7 @@ export default function Profile() {
         ) : null}
         <View style={{ flexDirection: "row", gap: space[3], justifyContent: "center" }}>
           <IconButton icon={muted ? Bell : BellOff} label={muted ? t("chat.unmute") : t("chat.mute")} onPress={() => void setMute(conv.id, muted ? null : new Date(Date.now() + 8 * 3600_000).toISOString()).catch(fail)} />
+          <IconButton icon={Trash2} label={t("chats.deleteTitle")} color={c.danger} onPress={() => confirmDialog({ title: t("chats.deleteTitle"), message: t("chats.deleteConfirm"), icon: Trash2, destructive: true, confirmLabel: t("common.delete"), onConfirm: () => { clearConversation(conv.id); router.dismissTo("/"); } })} />
           <IconButton icon={UserMinus} label={t("friends.remove")} color={c.danger} onPress={() => confirm(t("friends.remove"), t("friends.removeConfirm"), () => removeFriend(other.id))} />
           <IconButton icon={Ban} label={t("friends.block")} color={c.danger} onPress={() => confirm(t("friends.block"), t("friends.blockConfirm"), () => blockUser(other.id))} />
         </View>

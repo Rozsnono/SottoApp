@@ -63,15 +63,17 @@ interface ChatState {
   readIds: Record<string, true>;
   /** userId → ellenőrzött biztonsági szám (ujjlenyomat); kulcsváltáskor már nem egyezik. */
   verified: Record<string, string>;
+  /** convId → törölt szekvencia-határ (lásd Meta.cleared). */
+  cleared: Record<string, number>;
   /** userId → aktivitás (ismerősök; csak ha mindkét fél megosztja). `online`: a lekéréskor aktív volt. */
   activity: Record<string, { online: boolean; at: number }>;
 }
 
-export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, activity: {} });
+export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, activity: {} });
 
 /** A szerverről kapott (titkosított) üzenetek – a jelentéshez újra kinyitjuk a kulcsot; nyílt tartalmat nem tartalmaz. */
 const wires = new Map<string, WireMessage>();
-let meta: Meta = { readIds: [], pins: {}, verified: {} };
+let meta: Meta = { readIds: [], pins: {}, verified: {}, cleared: {} };
 let cursor = "0";
 let timer: ReturnType<typeof setInterval> | null = null;
 let polling = false;
@@ -100,7 +102,7 @@ function putMessages(convId: string, upd: (list: Msg[]) => Msg[]) {
 export async function startEngine(): Promise<void> {
   if (!session.get().keys) return;
   meta = await loadMeta();
-  chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified } });
+  chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified }, cleared: { ...meta.cleared } });
   await refreshLists();
   await pollOnce(true);
   void refreshActivity();
@@ -116,11 +118,14 @@ export function stopEngine(): void {
   appSub = null;
   cursor = "0";
   wires.clear();
-  meta = { readIds: [], pins: {}, verified: {} };
+  // A törölt beszélgetések határa kilépéskor is megmarad (különben újra belépve visszatöltődne az előzmény).
+  const keepCleared = meta.cleared;
+  meta = { readIds: [], pins: {}, verified: {}, cleared: {} };
   wipeMeta();
+  if (Object.keys(keepCleared).length) saveMeta({ ...meta, cleared: keepCleared });
   purgeTemp();
   dropMediaConfig();
-  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, activity: {} });
+  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, activity: {} });
 }
 setSessionEndedHandler(stopEngine);
 
@@ -242,6 +247,7 @@ function applySync(r: SyncResp, initial: boolean) {
     const sigPub = mine ? me.identitySigningPublicKey : conv?.other.identitySigningPublicKey;
     const existing = (chat.get().messages[w.conversationId] ?? []).find((m) => m.id === w.id || m.clientMessageId === w.clientMessageId);
     if (existing && existing.status !== "pending" && existing.status !== "failed") continue;
+    if (w.seq != null && w.seq <= (meta.cleared[w.conversationId] ?? -1)) continue; // ezen az eszközön törölt előzmény
     wires.set(w.id, w);
     const forged = !sigPub || !verifyWire(w, sigPub);
     const opened = forged ? ({ ok: false } as const) : openWire(w, { userId: me.id, deviceId: keys.deviceId, devPriv: keys.devPriv, idPriv: keys.idPriv });
@@ -410,6 +416,19 @@ export async function friendAction(friendshipId: string, action: "accept" | "dec
   await api(`/api/friends/requests/${friendshipId}/${action}`, { method: "POST", body: {} });
   await refreshLists();
 }
+/**
+ * Beszélgetés törlése MAGUNKNAK, ezen az eszközön: az eddigi üzenetek eltűnnek, és nem töltődnek vissza.
+ * A másik fél példánya és a szerveren tárolt titkosított másolat érintetlen (törlés mindkét oldalon csak a feladónak jár).
+ */
+export function clearConversation(convId: string): void {
+  const list = chat.get().messages[convId] ?? [];
+  const upTo = Math.max(meta.cleared[convId] ?? -1, ...list.map((m) => m.seq ?? -1));
+  meta.cleared[convId] = upTo;
+  saveMeta(meta);
+  for (const m of list) wires.delete(m.id);
+  chat.set((s) => ({ cleared: { ...s.cleared, [convId]: upTo }, messages: { ...s.messages, [convId]: [] } }));
+}
+
 export async function removeFriend(userId: string): Promise<void> {
   await api(`/api/friends/${userId}`, { method: "DELETE" });
   await refreshLists();

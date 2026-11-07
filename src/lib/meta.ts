@@ -11,8 +11,10 @@ export interface Meta {
   pins: Record<string, { id: string; sig: string }>;
   /** Biztonsági szám ellenőrzöttnek jelölve (userId → rögzített kulcs-ujjlenyomat). */
   verified: Record<string, string>;
+  /** Beszélgetés törölve (csak ezen az eszközön): convId → legnagyobb törölt szekvencia; ennél régebbi üzenet nem jelenik meg. */
+  cleared: Record<string, number>;
 }
-const empty = (): Meta => ({ readIds: [], pins: {}, verified: {} });
+const empty = (): Meta => ({ readIds: [], pins: {}, verified: {}, cleared: {} });
 const file = () => new File(Paths.document, "sotto-meta.json");
 
 export async function loadMeta(): Promise<Meta> {

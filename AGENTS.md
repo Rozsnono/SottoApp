@@ -70,3 +70,4 @@ Docs: https://docs.expo.dev/eas/index.md
 
 - 1.3.1: napválasztó felirat a chatben (Ma / Tegnap / dátum), `lib/time.ts` dayLabel.
 - 1.3.2: Messenger-stílusú főoldal (cím + saját monogram, kereső, ismerős-sáv, előnézet+idő egy sorban, olvasatlan pont, pipa).
+- 1.3.3: beszélgetés törlése (jobbra húzás a főoldalon + profil képernyő): helyi, csak ezen az eszközön (Meta.cleared, kilépéskor is megmarad), a másik fél és a szerver példánya érintetlen. Ismerős törlése: jobbra húzás az Ismerősök fülön.
