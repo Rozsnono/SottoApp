@@ -6,7 +6,8 @@ import { buildOutgoing, openWire, verifyWire, type WireMessage } from "@/crypto/
 import { decryptPrefs, encryptPrefs } from "@/crypto/prefs";
 import { decryptBuffer, encryptBuffer, encryptedSize, STREAM_CHUNK } from "@/crypto/stream";
 import { SendMessageBodySchema } from "@/protocol/schemas";
-import { safetyNumber } from "@/crypto/safety";
+import { parseSnPayload, safetyNumber, snPayload } from "@/crypto/safety";
+import makeQr from "qrcode-generator";
 import { currentTheme, reactionMap, type EventMsg } from "@/lib/events";
 
 describe("helyreállító kód", () => {
@@ -146,5 +147,21 @@ describe("események (reakció, téma)", () => {
   it("téma: a legutóbbi váltás számít", () => {
     expect(currentTheme([])).toBeNull();
     expect(currentTheme([ev("t1", 1, "a", true, { event: { kind: "theme", theme: "ocean" } }), ev("t2", 2, "b", false, { event: { kind: "theme", theme: "rose" } })])).toBe("rose");
+  });
+});
+
+describe("biztonsági szám QR", () => {
+  it("a tartalom oda-vissza értelmezhető, idegen szöveget elutasít", () => {
+    const fp = safetyNumber(devicePublic(generateDeviceKey()), devicePublic(generateDeviceKey())).join("");
+    expect(fp).toHaveLength(30);
+    expect(parseSnPayload(snPayload(fp))).toBe(fp);
+    expect(parseSnPayload("https://example.com")).toBeNull();
+    expect(parseSnPayload("sotto:sn1:123")).toBeNull();
+  });
+  it("a QR-kód legenerálható a tartalomból", () => {
+    const qr = makeQr(0, "M");
+    qr.addData(snPayload("1".repeat(30)));
+    qr.make();
+    expect(qr.getModuleCount()).toBeGreaterThanOrEqual(21);
   });
 });

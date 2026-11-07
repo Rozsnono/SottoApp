@@ -2,6 +2,7 @@
  * Munkamenet és kulcsok. Titkos adat (tokenek, privát kulcsok) csak a SecureStore-ban él és a memóriában.
  * Állapotok: loading → anon (nincs belépve) → needs-keys (belépve, de az identitáskulcs még nincs ezen az eszközön) → ready.
  */
+import { wipeOutbox } from "@/lib/outbox";
 import { createStore } from "@/lib/store";
 import { api, ApiError, configureAuth, type Tokens } from "@/lib/api";
 import { secureDel, secureGet, secureSet } from "@/lib/secure";
@@ -194,7 +195,9 @@ export async function logout(): Promise<void> {
 /** Fiók törlése jelszóval (30 napig visszaállítható): a fiók helyi kulcstár-bejegyzése is törlődik. */
 export async function deleteAccount(password: string): Promise<void> {
   const username = session.get().me?.username;
+  const userId = session.get().me?.id;
   await api("/api/account", { method: "DELETE", body: { password } });
+  if (userId) wipeOutbox(userId);
   if (username) await secureDel(entryKey(username));
   await clearLocal();
 }

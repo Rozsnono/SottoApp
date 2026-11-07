@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ban, Bell, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, Trash2, TriangleAlert, UserMinus } from "lucide-react-native";
+import { Ban, Bell, ScanLine, BellOff, ChevronLeft, Image as ImageIcon, Palette, Pencil, ShieldCheck, Trash2, TriangleAlert, UserMinus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button, ColorPicker, IconButton, Kav, ListItem, Monogram, Screen, T, TextField } from "@/components/ui";
 import { blockUser, chat, clearConversation, displayName, loadPrefs, removeFriend, savePrefs, isMuted, setMute, setVerified } from "@/state/chat";
 import { session } from "@/state/session";
-import { safetyNumber } from "@/crypto/safety";
+import { SafetyQr } from "@/components/SafetyQr";
+import { safetyNumber, snPayload } from "@/crypto/safety";
 import { useStore } from "@/lib/store";
 import { radius, size, space, useTheme } from "@/theme";
 import { toast } from "@/state/toast";
@@ -58,7 +59,9 @@ export default function Profile() {
           <View style={{ gap: space[3], backgroundColor: c.surface, borderRadius: radius.lg, padding: space[4], borderWidth: 1, borderColor: c.border }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}><ShieldCheck size={size.icon} color={verified ? c.success : c.textMuted} /><T v="title">{t("profile.safety")}</T></View>
             <T v="caption" muted>{t("profile.safetyInfo")}</T>
+            <View style={{ alignItems: "center" }}><SafetyQr value={snPayload(fp)} px={200} /></View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>{sn.map((g, i) => <T key={i} v="mono">{g}</T>)}</View>
+            <Button variant="secondary" icon={ScanLine} title={t("profile.scan")} onPress={() => router.push({ pathname: "/chat/[id]/scan", params: { id } })} />
             <Button variant={verified ? "primary" : "secondary"} icon={ShieldCheck} title={t("profile.verified")} onPress={() => setVerified(other.id, verified ? null : fp)} />
           </View>
         ) : null}

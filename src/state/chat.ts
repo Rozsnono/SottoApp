@@ -13,6 +13,7 @@ import { uuidv4 } from "@/crypto/keys";
 import { buildOutgoing, openWire, verifyWire, type ChatEvent, type MessageType, type Payload, type ReplyRef, type Recipients, type WireMessage } from "@/crypto/message";
 import { decryptPrefs, encryptPrefs, type ContactPrefs } from "@/crypto/prefs";
 import { dropMediaConfig, encryptAndUpload, purgeTemp, releaseCapture } from "@/services/media";
+import { loadOutbox, saveOutbox, type OutboxEntry } from "@/lib/outbox";
 import { MAX_TEXT_CIPHERTEXT_CHARS, type REPORT_REASONS } from "@/protocol/constants";
 import { sealForPublicKey } from "@/protocol/wrap";
 
@@ -105,6 +106,7 @@ export async function startEngine(): Promise<void> {
   chat.set({ readIds: Object.fromEntries(meta.readIds.map((i) => [i, true as const])), verified: { ...meta.verified }, cleared: { ...meta.cleared } });
   await refreshLists();
   await pollOnce(true);
+  void restoreOutbox();
   void refreshActivity();
   chat.set({ ready: true });
   timer ??= setInterval(() => void pollOnce(), SYNC_INTERVAL_MS);
@@ -138,7 +140,50 @@ export function dropPlaintext(): void {
 }
 
 function noteOnline(ok: boolean) {
-  if (chat.get().online !== ok) chat.set({ online: ok });
+  if (chat.get().online === ok) return;
+  chat.set({ online: ok });
+  if (ok) void retryFailedText(); // a kapcsolat visszatért: a sikertelen szöveges üzenetek újrapróbálása
+}
+
+// ---- tartós kimenő sor ------------------------------------------------------------------------------------------
+
+/** Az el nem küldött szöveges üzenetek titkosított mentése (lásd lib/outbox.ts). Minden állapotváltáskor hívjuk. */
+function syncOutbox(): void {
+  const me = session.get().me;
+  const keys = session.get().keys;
+  if (!me || !keys) return;
+  const entries: OutboxEntry[] = [];
+  for (const [convId, list] of Object.entries(chat.get().messages)) {
+    for (const m of list) if (m.mine && m.type === "text" && m.seq == null && (m.status === "pending" || m.status === "failed") && m.payload) entries.push({ convId, clientMessageId: m.clientMessageId, createdAt: m.createdAt, payload: m.payload });
+  }
+  saveOutbox(me.id, keys.idPriv, entries);
+}
+
+/** Újraindítás után: a mentett, még el nem küldött üzenetek visszatöltése és elküldése (a szerver a clientMessageId alapján idempotens). */
+async function restoreOutbox(): Promise<void> {
+  const me = session.get().me;
+  const keys = session.get().keys;
+  if (!me || !keys) return;
+  for (const e of await loadOutbox(me.id, keys.idPriv)) {
+    const st = chat.get();
+    if (!st.conversations.some((c) => c.id === e.convId)) continue;
+    if ((st.messages[e.convId] ?? []).some((m) => m.clientMessageId === e.clientMessageId)) continue; // közben már megérkezett
+    const m: Msg = { id: e.clientMessageId, clientMessageId: e.clientMessageId, convId: e.convId, senderId: me.id, mine: true, type: "text", payload: e.payload as Payload, broken: false, forged: false, status: "failed", seq: null, createdAt: e.createdAt, mediaRef: null };
+    putMessages(e.convId, (l) => [...l, m]);
+  }
+  await retryFailedText();
+}
+
+let retrying = false;
+async function retryFailedText(): Promise<void> {
+  if (retrying) return;
+  retrying = true;
+  try {
+    const failed = Object.values(chat.get().messages).flat().filter((m) => m.mine && m.type === "text" && m.status === "failed" && m.seq == null);
+    for (const m of failed) await deliver(m).catch(() => undefined);
+  } finally {
+    retrying = false;
+  }
 }
 
 // ---- listák és kulcs-rögzítés -----------------------------------------------------------------------------------
@@ -324,10 +369,12 @@ async function deliver(m: Msg): Promise<void> {
     const res = await postWithRetry(m, payload, extra);
     putMessages(m.convId, (l) => l.map((x) => (x.id === m.id ? { ...x, id: res.id, seq: res.seq, createdAt: Date.parse(res.createdAt), status: "sent", localUri: undefined, progress: undefined } : x)));
     releaseCapture(m.localUri); // a nyílt másolat feleslegessé vált
+    syncOutbox();
     noteOnline(true);
   } catch (e) {
     handleNet(e);
     putMessages(m.convId, (l) => l.map((x) => (x.id === m.id ? { ...x, status: "failed", progress: undefined } : x)));
+    syncOutbox();
     throw e;
   }
 }
@@ -345,6 +392,7 @@ export async function sendText(convId: string, text: string, hidden: boolean, re
   if (t.length > MAX_TEXT_CIPHERTEXT_CHARS / 2) throw new Error("tooLong");
   const m = newPending(convId, "text", { v: 1, text: t, ...(hidden ? { hidden: true } : {}), ...(reply ? { reply } : {}) });
   putMessages(convId, (l) => [...l, m]);
+  syncOutbox(); // elküldés előtt mentjük: ha az app közben bezárul, nem vész el
   await deliver(m).catch(() => undefined);
 }
 
@@ -374,6 +422,7 @@ export async function retrySend(convId: string, id: string): Promise<void> {
 
 export function discardFailed(convId: string, id: string): void {
   putMessages(convId, (l) => l.filter((x) => x.id !== id));
+  syncOutbox();
 }
 
 // ---- olvasás, törlés --------------------------------------------------------------------------------------------

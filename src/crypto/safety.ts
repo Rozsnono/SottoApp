@@ -15,3 +15,12 @@ export function safetyNumber(pubA: string, pubB: string): string[] {
   const dv = new DataView(h.buffer, h.byteOffset);
   return Array.from({ length: 6 }, (_, i) => String(dv.getUint32(i * 4, false) % 100000).padStart(5, "0"));
 }
+
+/** QR-tartalom a biztonsági szám ellenőrzéséhez. */
+export const SN_PREFIX = "sotto:sn1:";
+export const snPayload = (fp: string) => `${SN_PREFIX}${fp}`;
+/** Beolvasott szövegből a számjegyek, vagy `null`, ha nem Sotto biztonsági szám kód. */
+export function parseSnPayload(text: string): string | null {
+  const m = /^sotto:sn1:(\d{30})$/.exec(text.trim());
+  return m ? m[1] : null;
+}
