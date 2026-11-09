@@ -81,3 +81,4 @@ Docs: https://docs.expo.dev/eas/index.md
 - Függőségek: expo-audio, expo-screen-capture, expo-alternate-app-icons (ikon-asset: assets/icons/*, a generáló script nincs a repóban).
 
 - Push: Androidon natív FCM token (`services/push.ts`), `google-services.json` kell a buildhez (gitignore-olt, nem commitolható: API kulcsot tartalmaz).
+- 1.4.1: Beállítások → Teszt-értesítés (újraregisztrál + szerveres teszt push, az ok kiírva); sikertelen regisztráció oka látszik.

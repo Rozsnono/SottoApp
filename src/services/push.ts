@@ -15,6 +15,9 @@ Notifications.setNotificationHandler({
 
 let sub: Notifications.EventSubscription | null = null;
 let tokenSub: Notifications.EventSubscription | null = null;
+let lastError: string | null = null;
+/** Az utolsó sikertelen regisztráció oka (a Beállításokban megjelenítve; üres, ha rendben volt). */
+export const getPushError = (): string | null => lastError;
 
 /** Engedélykérés + token regisztrálása a szerveren. `false`, ha nem sikerült/nincs engedély. */
 export async function registerPush(): Promise<boolean> {
@@ -22,7 +25,7 @@ export async function registerPush(): Promise<boolean> {
     if (Platform.OS === "android") await Notifications.setNotificationChannelAsync("messages", { name: "Messages", importance: AndroidImportance.HIGH });
     let st = (await Notifications.getPermissionsAsync()).status;
     if (st !== "granted") st = (await Notifications.requestPermissionsAsync()).status;
-    if (st !== "granted") return false;
+    if (st !== "granted") { lastError = "notification permission denied"; return false; }
     if (Platform.OS === "android") {
       // Natív FCM-token (google-services.json): a szerver közvetlenül Firebase-en át küld, Expo-fiók nem kell.
       const token = (await Notifications.getDevicePushTokenAsync()).data as string;
@@ -37,9 +40,11 @@ export async function registerPush(): Promise<boolean> {
       await api("/api/devices/push", { method: "PUT", body: { pushToken: token, notificationsEnabled: true } });
     }
     sub ??= Notifications.addNotificationReceivedListener(() => void pollOnce());
+    lastError = null;
     return true;
   } catch (e) {
-    console.warn("[push] regisztráció sikertelen:", e instanceof Error ? e.message : e);
+    lastError = e instanceof Error ? e.message : String(e);
+    console.warn("[push] regisztráció sikertelen:", lastError);
     return false;
   }
 }
