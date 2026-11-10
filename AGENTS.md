@@ -82,3 +82,4 @@ Docs: https://docs.expo.dev/eas/index.md
 
 - Push: Androidon natív FCM token (`services/push.ts`), `google-services.json` kell a buildhez (gitignore-olt, nem commitolható: API kulcsot tartalmaz).
 - 1.4.1: Beállítások → Teszt-értesítés (újraregisztrál + szerveres teszt push, az ok kiírva); sikertelen regisztráció oka látszik.
+- 1.4.2: EAS build előkészítés: `eas.json` (preview=APK, production=AAB), `app.config.js` (a `google-services.json` útvonala a fájl-típusú `GOOGLE_SERVICES_JSON` EAS-változóból, helyi buildnél `./google-services.json`), `app.json`: `owner` + `extra.eas.projectId` (@rozsnono/sotto-app). Felhős build előtt: `eas env:create preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret --scope project`; majd `eas build --platform android --profile preview`. A helyi Gradle build továbbra is működik.

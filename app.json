@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sotto",
     "slug": "sotto-app",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sotto",
@@ -34,7 +34,7 @@
         "POST_NOTIFICATIONS"
       ],
       "package": "com.sotto.app",
-      "versionCode": 11
+      "versionCode": 12
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -109,7 +109,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "https://api.sotto.commandos.rozsnorbert.hu"
-    }
+      "apiUrl": "https://api.sotto.commandos.rozsnorbert.hu",
+      "eas": {
+        "projectId": "4c06dd3b-c82e-45b6-81d1-fec87b524525"
+      }
+    },
+    "owner": "rozsnono"
   }
 }
