@@ -1,6 +1,6 @@
 {
   "name": "sotto-app",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/ui": "~58.0.27",
@@ -10,6 +10,7 @@
     "expo": "~58.0.23",
     "expo-alternate-app-icons": "^11.0.0",
     "expo-application": "~58.1.2",
+    "expo-asset": "~58.0.20",
     "expo-audio": "~58.0.11",
     "expo-blur": "~58.0.5",
     "expo-camera": "~58.0.14",
