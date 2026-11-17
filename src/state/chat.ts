@@ -378,6 +378,11 @@ async function deliver(m: Msg): Promise<void> {
       putMessages(m.convId, (l) => l.map((x) => (x.id === m.id ? { ...x, payload, mediaRef: up.mediaRef } : x)));
     }
     const res = await postWithRetry(m, payload, extra);
+    if (!(chat.get().messages[m.convId] ?? []).some((x) => x.id === m.id)) {
+      // Közben a felhasználó elvetette (törölte) az üzenetet, de a szerver már elfogadta: kölcsönösen töröljük.
+      api(`/api/messages/${res.id}`, { method: "DELETE" }).catch((e) => console.warn("[chat] elvetett üzenet szerveres törlése sikertelen", e instanceof Error ? e.message : e));
+      return;
+    }
     putMessages(m.convId, (l) => l.map((x) => (x.id === m.id ? { ...x, id: res.id, seq: res.seq, createdAt: Date.parse(res.createdAt), status: "sent", localUri: undefined, progress: undefined } : x)));
     releaseCapture(m.localUri); // a nyílt másolat feleslegessé vált
     syncOutbox();
@@ -490,6 +495,11 @@ export async function markRead(m: Msg): Promise<void> {
 
 /** Törlés mindkét oldalon (csak a feladó). A helyi listából a szinkron is eltávolítja. */
 export async function deleteForAll(m: Msg): Promise<void> {
+  // A még el nem küldött (függő / sikertelen) üzenet nincs a szerveren: csak helyben dobjuk el.
+  if (m.seq == null && (m.status === "pending" || m.status === "failed")) {
+    discardFailed(m.convId, m.id);
+    return;
+  }
   await api(`/api/messages/${m.id}`, { method: "DELETE" });
   putMessages(m.convId, (l) => l.filter((x) => x.id !== m.id));
 }

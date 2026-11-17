@@ -218,7 +218,7 @@ export default function ChatScreen() {
           {menu && replyRefFor(menu) ? <IconButton icon={Reply} label={t("chat.reply")} onPress={() => { startReply(menu); setMenu(null); }} /> : null}
           {menu?.type === "text" && menu.payload && !menu.payload.hidden ? <IconButton icon={Copy} label={t("chat.copy")} filled onPress={async () => { await Clipboard.setStringAsync(menu.payload?.text ?? ""); setMenu(null); }} /> : null}
           {menu && canEdit(menu) ? <IconButton icon={Pencil} label={t("chat.edit")} onPress={() => { setEditing(menu); setMenu(null); }} /> : null}
-          {menu?.mine && menu.status !== "pending" ? <IconButton icon={Trash2} label={t("chat.deleteForAll")} color={c.danger} onPress={() => { const m = menu; setMenu(null); doDelete(m); }} /> : null}
+          {menu?.mine ? <IconButton icon={Trash2} label={t("chat.deleteForAll")} color={c.danger} onPress={() => { const m = menu; setMenu(null); doDelete(m); }} /> : null}
           {menu && !menu.mine ? <IconButton icon={Flag} label={t("chat.report")} onPress={() => { setReporting(menu); setMenu(null); }} /> : null}
           <IconButton icon={X} label={t("common.close")} onPress={() => setMenu(null)} />
         </View>
