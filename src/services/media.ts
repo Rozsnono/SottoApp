@@ -4,6 +4,7 @@
  * Titkosítatlan fájl csak ideiglenesen, a cache `sotto-tmp` mappájában létezik (megjelenítéshez), és bezáráskor/zároláskor törlődik.
  */
 import { Directory, File, Paths, UploadType } from "expo-file-system";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { randomBytes } from "@noble/hashes/utils.js";
 import { api, ApiError } from "@/lib/api";
 import { session } from "@/state/session";
@@ -64,15 +65,67 @@ export function releaseCapture(uri: string | null | undefined): void {
   if (uri && uri.startsWith(Paths.cache.uri)) releaseTemp(uri);
 }
 
+const NAS_TIMEOUT_MS = 30_000; // vezérlő hívások (start/finish/failed)
+const PIECE_TIMEOUT_MS = 60_000; // egy feltöltött darab
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+const PIECE_ATTEMPTS = 4;
+
+/** Időkorlát egy olyan műveletre, amit nem lehet megszakítani (fájlfeltöltés/-letöltés): lejáratkor hálózati hibával tér vissza. */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new ApiError("NETWORK", `${what}: időtúllépés`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 async function nas(c: MediaConfig, path: string, init: RequestInit = {}): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), NAS_TIMEOUT_MS);
   try {
-    return await fetch(`${c.baseUrl}${path}`, { ...init, headers: { ...(init.headers ?? {}), "x-api-key": c.apiKey } });
-  } catch {
+    return await fetch(`${c.baseUrl}${path}`, { ...init, signal: ctl.signal, headers: { ...(init.headers ?? {}), "x-api-key": c.apiKey } });
+  } catch (e) {
+    console.warn(`[media] ${path} nem érhető el`, e instanceof Error ? e.message : e);
     throw new ApiError("NETWORK", "A médiatár nem érhető el.");
+  } finally {
+    clearTimeout(t);
   }
 }
 
-const UPLOAD_PIECE = 4 * 1024 * 1024; // a NAS felé küldött darabméret (a STREAM-chunk többszöröse)
+const UPLOAD_PIECE = 1024 * 1024; // a NAS felé küldött darabméret (a STREAM-chunk többszöröse); kicsi, hogy gyenge hálózaton is átmenjen és újrapróbálható legyen
+
+/** Kép kicsinyítése feltöltés előtt: hosszabbik oldal max. 1920 px, JPEG 0,8. Hiba esetén `null` (az eredeti megy fel). */
+const MAX_EDGE = 1920;
+const DOWNSCALE_MIN_BYTES = 600 * 1024;
+async function downscaleImage(uri: string): Promise<{ uri: string; width: number; height: number } | null> {
+  try {
+    const ref = await ImageManipulator.manipulate(uri, { maxWidth: MAX_EDGE, maxHeight: MAX_EDGE }).renderAsync();
+    const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: 0.8 });
+    return { uri: out.uri, width: out.width, height: out.height };
+  } catch (e) {
+    console.warn("[media] kép kicsinyítése sikertelen, az eredeti megy fel", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** Egy darab feltöltése újrapróbálással (exponenciális várakozás); végleges elutasításnál (4xx) nem próbálkozik tovább. */
+async function uploadPiece(piece: File, c: MediaConfig, params: Record<string, string>): Promise<void> {
+  let last: unknown;
+  for (let attempt = 0; attempt < PIECE_ATTEMPTS; attempt++) {
+    if (attempt) await sleep(1000 * 2 ** (attempt - 1));
+    try {
+      const res = await withTimeout(piece.upload(`${c.baseUrl}/upload/chunk`, { uploadType: UploadType.MULTIPART, fieldName: "file", mimeType: "application/octet-stream", headers: { "x-api-key": c.apiKey }, parameters: params }), PIECE_TIMEOUT_MS, "feltöltés");
+      if (res.status >= 200 && res.status < 300) return;
+      last = httpErr("chunk", res.status);
+      if (res.status < 500 && res.status !== 408 && res.status !== 429) throw last; // végleges elutasítás
+    } catch (e) {
+      if (e === last) throw e;
+      last = e;
+      console.warn(`[media] darab feltöltése sikertelen (${attempt + 1}/${PIECE_ATTEMPTS})`, e instanceof Error ? e.message : e);
+    }
+  }
+  throw last instanceof ApiError ? last : new ApiError("NETWORK", "A médiatár nem érhető el.");
+}
 
 export interface Uploaded {
   mediaRef: string;
@@ -86,7 +139,17 @@ export interface Uploaded {
  */
 export async function encryptAndUpload(srcUri: string, kind: "image" | "video" | "audio", meta: { mime: string; width?: number; height?: number; durationMs?: number }, onProgress?: (p: number) => void): Promise<Uploaded> {
   const c = await getMediaConfig();
-  const src = new File(srcUri);
+  let srcFile = new File(srcUri);
+  let scaled: string | null = null; // a kicsinyített ideiglenes másolat (a végén töröljük)
+  if (kind === "image" && meta.mime !== "image/gif" && (srcFile.size ?? 0) > DOWNSCALE_MIN_BYTES) {
+    const d = await downscaleImage(srcUri);
+    if (d && (new File(d.uri).size ?? Infinity) < (srcFile.size ?? 0)) {
+      scaled = d.uri;
+      srcFile = new File(d.uri);
+      meta = { ...meta, mime: "image/jpeg", width: d.width, height: d.height };
+    } else if (d) releaseTemp(d.uri);
+  }
+  const src = srcFile;
   const plainSize = src.size ?? 0;
   if (!plainSize) throw new Error("Üres fájl");
   const encSize = encryptedSize(plainSize);
@@ -105,15 +168,19 @@ export async function encryptAndUpload(srcUri: string, kind: "image" | "video" |
       const plain = await hIn.readBytes(Math.min(STREAM_CHUNK, plainSize - i * STREAM_CHUNK));
       await hOut.writeBytes(encryptChunk(key, base, i, i === count - 1, plain));
     }
+  } catch (e) {
+    releaseTemp(enc.uri);
+    releaseTemp(scaled);
+    throw e;
   } finally {
     hIn.close();
     hOut.close();
   }
 
   const pieces = Math.ceil(encSize / UPLOAD_PIECE);
-  const start = await nas(c, "/upload/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: mediaRef, totalChunks: pieces, chunkSize: UPLOAD_PIECE, targetPath: c.folder }) });
-  if (!start.ok) { releaseTemp(enc.uri); throw httpErr("start", start.status); }
-  const { uploadId } = (await start.json()) as { uploadId: string };
+  const start = await nas(c, "/upload/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: mediaRef, totalChunks: pieces, chunkSize: UPLOAD_PIECE, targetPath: c.folder }) }).catch((e) => { releaseTemp(enc.uri); releaseTemp(scaled); throw e; });
+  if (!start.ok) { releaseTemp(enc.uri); releaseTemp(scaled); throw httpErr("start", start.status); }
+  const { uploadId } = (await start.json().catch((e) => { releaseTemp(enc.uri); releaseTemp(scaled); throw e; })) as { uploadId: string };
   try {
     const hEnc = enc.open();
     try {
@@ -122,9 +189,11 @@ export async function encryptAndUpload(srcUri: string, kind: "image" | "video" |
         const piece = tmpFile(`${mediaRef}.p${i}`);
         piece.create({ overwrite: true });
         piece.write(buf);
-        const res = await piece.upload(`${c.baseUrl}/upload/chunk`, { uploadType: UploadType.MULTIPART, fieldName: "file", mimeType: "application/octet-stream", headers: { "x-api-key": c.apiKey }, parameters: { uploadId, chunkIndex: String(i), totalChunks: String(pieces), filename: mediaRef } });
-        releaseTemp(piece.uri);
-        if (res.status < 200 || res.status >= 300) throw httpErr("chunk", res.status);
+        try {
+          await uploadPiece(piece, c, { uploadId, chunkIndex: String(i), totalChunks: String(pieces), filename: mediaRef });
+        } finally {
+          releaseTemp(piece.uri);
+        }
         onProgress?.((i + 1) / (pieces + 1));
       }
     } finally {
@@ -138,6 +207,7 @@ export async function encryptAndUpload(srcUri: string, kind: "image" | "video" |
     throw e;
   } finally {
     releaseTemp(enc.uri);
+    releaseTemp(scaled);
   }
   return { mediaRef, encryptedBytes: encSize, descriptor: { key: toB64(key), nonce: toB64(base), size: plainSize, ...meta } };
 }
@@ -156,7 +226,7 @@ export async function downloadAndDecrypt(mediaRef: string, d: MediaDescriptor): 
   const encFile = tmpFile(`${mediaRef}.dl`);
   if (encFile.exists) encFile.delete();
   try {
-    await File.downloadFileAsync(`${c.baseUrl}/download?path=${encodeURIComponent(`${c.folder}/${mediaRef}`)}`, encFile, { headers: { "x-api-key": c.apiKey }, idempotent: true });
+    await withTimeout(File.downloadFileAsync(`${c.baseUrl}/download?path=${encodeURIComponent(`${c.folder}/${mediaRef}`)}`, encFile, { headers: { "x-api-key": c.apiKey }, idempotent: true }), DOWNLOAD_TIMEOUT_MS, "letöltés");
   } catch (e) {
     releaseTemp(encFile.uri);
     console.warn("[media] letöltés sikertelen", e instanceof Error ? e.message : e);
