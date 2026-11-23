@@ -73,14 +73,21 @@ interface ChatState {
   consumed: Record<string, true>;
   /** userId → aktivitás (ismerősök; csak ha mindkét fél megosztja). `online`: a lekéréskor aktív volt. */
   activity: Record<string, { online: boolean; at: number }>;
+  /** convId → van-e még a szerveren, a betöltöttnél régebbi üzenet (lapozott előzmény). */
+  older: Record<string, boolean>;
+  /** convId → éppen töltjük az előző oldalt (a lista tetején töltésjelző). */
+  olderLoading: Record<string, boolean>;
 }
 
-export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {} });
+export const chat = createStore<ChatState>({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {}, older: {}, olderLoading: {} });
 
 /** A szerverről kapott (titkosított) üzenetek – a jelentéshez újra kinyitjuk a kulcsot; nyílt tartalmat nem tartalmaz. */
 const wires = new Map<string, WireMessage>();
 let meta: Meta = { readIds: [], pins: {}, verified: {}, cleared: {}, consumed: [] };
 let cursor = "0";
+/** convId → a betöltött legrégebbi (nem-esemény) üzenet sorszáma: innen kérjük az előző oldalt. */
+const oldestSeq = new Map<string, number>();
+const loadingOlder = new Set<string>();
 let timer: ReturnType<typeof setInterval> | null = null;
 let sweeper: ReturnType<typeof setInterval> | null = null;
 let polling = false;
@@ -128,6 +135,8 @@ export function stopEngine(): void {
   appSub?.remove();
   appSub = null;
   cursor = "0";
+  oldestSeq.clear();
+  loadingOlder.clear();
   wires.clear();
   // A törölt beszélgetések határa kilépéskor is megmarad (különben újra belépve visszatöltődne az előzmény).
   const keepCleared = meta.cleared;
@@ -137,7 +146,7 @@ export function stopEngine(): void {
   if (Object.keys(keepCleared).length || keepConsumed.length) saveMeta({ ...meta, cleared: keepCleared, consumed: keepConsumed });
   purgeTemp();
   dropMediaConfig();
-  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {} });
+  chat.set({ ready: false, online: true, conversations: [], messages: {}, friends: [], incoming: [], outgoing: [], prefs: {}, keyChanged: {}, readIds: {}, verified: {}, cleared: {}, consumed: {}, activity: {}, older: {}, olderLoading: {} });
 }
 setSessionEndedHandler(stopEngine);
 
@@ -146,7 +155,9 @@ export function dropPlaintext(): void {
   purgeTemp();
   wires.clear();
   cursor = "0";
-  chat.set({ messages: {} });
+  oldestSeq.clear();
+  loadingOlder.clear();
+  chat.set({ messages: {}, older: {}, olderLoading: {} });
 }
 
 function noteOnline(ok: boolean) {
@@ -264,6 +275,16 @@ interface SyncResp {
   cursor: string;
   hasMore: boolean;
   mediaKeyVersion: number;
+  /** Csak a lapozott kezdő szinkronban: convId → van-e régebbi üzenet. */
+  older?: Record<string, boolean>;
+}
+
+function noteOldest(msgs: WireMessage[]): void {
+  for (const w of msgs) {
+    if (w.type === "event" || w.seq == null) continue;
+    const cur = oldestSeq.get(w.conversationId);
+    if (cur === undefined || w.seq < cur) oldestSeq.set(w.conversationId, w.seq);
+  }
 }
 
 export async function pollOnce(initial = false): Promise<void> {
@@ -271,7 +292,10 @@ export async function pollOnce(initial = false): Promise<void> {
   polling = true;
   try {
     for (;;) {
-      const r = await api<SyncResp>(`/api/messages/sync?cursor=${encodeURIComponent(cursor)}`);
+      // Kezdő szinkron (kurzor 0): csak a legutóbbi üzenetek jönnek, az előzményt `loadOlder` tölti görgetésre.
+      const first = cursor === "0";
+      const r = await api<SyncResp>(`/api/messages/sync?cursor=${encodeURIComponent(cursor)}${first ? "&recent=1" : ""}`);
+      if (first && r.older) { noteOldest(r.messages); chat.set({ older: r.older }); }
       if (r.messages.some((m) => !chat.get().conversations.some((c) => c.id === m.conversationId))) await refreshLists();
       applySync(r, initial);
       cursor = r.cursor;
@@ -288,6 +312,28 @@ export async function pollOnce(initial = false): Promise<void> {
     pollCount++;
     if (pollCount % 5 === 0) void refreshLists();
     if (pollCount % 2 === 0) void refreshActivity();
+  }
+}
+
+/** Az előző oldal betöltése egy beszélgetésben (felfelé görgetéskor). Idempotens; egyszerre egy kérés beszélgetésenként. */
+export async function loadOlder(convId: string): Promise<void> {
+  const before = oldestSeq.get(convId);
+  if (!chat.get().older[convId] || before == null || loadingOlder.has(convId) || paused || !session.get().keys) return;
+  loadingOlder.add(convId);
+  chat.set((s) => ({ olderLoading: { ...s.olderLoading, [convId]: true } }));
+  try {
+    const r = await api<{ messages: WireMessage[]; receipts: SyncResp["receipts"]; hasMore: boolean }>(`/api/messages/history?conversationId=${encodeURIComponent(convId)}&before=${before}`);
+    noteOldest(r.messages);
+    applySync({ messages: r.messages, deletions: [], receipts: r.receipts, cursor, hasMore: false, mediaKeyVersion: 0 }, true);
+    const cleared = meta.cleared[convId];
+    const reachedCleared = cleared != null && (oldestSeq.get(convId) ?? Infinity) <= cleared; // az ezen az eszközön törölt előzményt nem töltjük vissza
+    chat.set((s) => ({ older: { ...s.older, [convId]: r.hasMore && !reachedCleared } }));
+    noteOnline(true);
+  } catch (e) {
+    handleNet(e);
+  } finally {
+    loadingOlder.delete(convId);
+    chat.set((s) => ({ olderLoading: { ...s.olderLoading, [convId]: false } }));
   }
 }
 

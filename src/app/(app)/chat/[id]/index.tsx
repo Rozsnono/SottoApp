@@ -1,6 +1,6 @@
 /** Beszélgetés: üzenetlista (fordított), rejtett/zárt média, olvasás-jelzés, üzenet-menü, jelentés, szerkesztő. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Modal, Pressable, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
@@ -11,7 +11,7 @@ import { Banner, Button, IconButton, Kav, Monogram, Screen, T } from "@/componen
 import { MessageBubble, SystemNotice } from "@/components/Bubble";
 import { activityText, dayLabel, differentDay } from "@/lib/time";
 import { Composer } from "@/components/Composer";
-import { acceptKeyChange, chat, setActiveConv, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEdit, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
+import { acceptKeyChange, chat, loadOlder, setActiveConv, deleteForAll, discardFailed, displayName, isMuted, loadPrefs, markRead, reportMessage, replyRefFor, retrySend, sendEdit, sendEvent, sendMedia, sendText, setMute, type Msg } from "@/state/chat";
 import { session } from "@/state/session";
 import { useStore } from "@/lib/store";
 import { MAX_VIDEO_DURATION_MS, type REPORT_REASONS } from "@/protocol/constants";
@@ -50,6 +50,7 @@ export default function ChatScreen() {
   const conv = useStore(chat, (s) => s.conversations.find((x) => x.id === id));
   const prefs = useStore(chat, (s) => s.prefs);
   const stored = useStore(chat, (s) => s.messages[id]);
+  const olderLoading = useStore(chat, (s) => !!s.olderLoading[id]);
   const raw = stored ?? EMPTY;
   const list = useMemo(() => withEdits(raw), [raw]); // a szerkesztések ráégetve
   const keyChanged = useStore(chat, (s) => (conv ? s.keyChanged[conv.other.id] : false));
@@ -180,7 +181,7 @@ export default function ChatScreen() {
           </Banner>
         </View>
       ) : null}
-      <FlatList ref={listRef} inverted data={data} extraData={infoId} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
+      <FlatList ref={listRef} inverted data={data} extraData={infoId} onEndReached={() => { if (id) void loadOlder(id); }} onEndReachedThreshold={0.6} ListFooterComponent={olderLoading ? <ActivityIndicator style={{ padding: space[3] }} color={c.textMuted} /> : undefined} onScrollToIndexFailed={() => undefined} keyExtractor={(m) => m.clientMessageId} onViewableItemsChanged={onViewable} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }} contentContainerStyle={{ paddingVertical: space[2] }}
         renderItem={({ item, index }) => {
           const sep = index === data.length - 1 || differentDay(item.createdAt, data[index + 1].createdAt) ? <View style={{ alignItems: "center", paddingVertical: space[2] }}><T v="caption" muted>{dayLabel(item.createdAt)}</T></View> : null;
           const members = membersOf(item);
